@@ -1,6 +1,12 @@
 tdameritrade
 sqlalchemy
 marshmallow
-pyyaml
 td-client
 td-ameritrade-python-api
+thetadata==0.9.11
+pyyaml
+schwab-py
+requests
+python-dotenv
+yfinance
+redis

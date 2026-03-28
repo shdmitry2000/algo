@@ -1,0 +1,514 @@
+
+OPTIONS STRUCTURE
+ARBITRAGE SYSTEM
+
+STEP 1 — SIGNAL ENGINE
+Strategy Logic & Documentation
+
+CONFIDENTIAL — INTERNAL USE ONLY
+
+Section 1
+System Purpose
+
+
+The purpose of this system is not to predict market direction, not to trade volatility, and not to rely on probability models.
+
+The system searches for option spread pricing inefficiencies and builds option structures where profit is structurally locked at the moment of entry.
+
+Core Principle: If a position is guaranteed to be worth more at expiration than what we pay for it today, we enter the trade.
+
+The entire system is built around identifying and exploiting these situations. No directional prediction is required.
+
+Section 2
+Core Concept — Structural Profit
+
+
+The system only trades when profit is locked by structure, not by prediction. There are only a few option structures where this is possible:
+
+Structure
+Profit Mechanism
+Iron Condor
+Total value fixed at expiration
+Shifted Iron Condor
+Total value has known minimum and maximum
+Butterfly (Sell Side)
+Owned spread always worth more than sold spread
+Shifted Butterfly
+Inequality still holds across shifted spreads
+Imbalanced Structures
+Owned spread notional larger than sold spread notional
+
+All strategies in the system are variations of these four mathematical ideas. Each idea represents a different form of guaranteed value relationship between spreads.
+
+Section 3
+Mathematical Foundations of the System
+
+
+The entire system relies on exactly four structural pricing relationships. These relationships allow positions to be constructed where profit is locked at entry without relying on market direction.
+
+1 — Fixed Value Identity (Iron Condor)
+A + B = Constant     →     Iron Condor
+The call spread and put spread together always equal the strike difference at expiration. This is a mathematical identity.
+
+2 — Bounded Value Range (Shifted Iron Condor)
+MIN ≤  A + B  ≤ MAX     →     Shifted Condor
+When spreads are shifted apart, total value is not fixed but it is bounded. Profit is locked if we buy below MIN or sell above MAX.
+
+3 — Structural Inequality (Butterfly)
+A  ≥  B  (always)     →     Butterfly
+The owned spread can never be worth less than the sold spread. This inequality is guaranteed by structure. Selling for a credit therefore guarantees minimum profit equal to that credit.
+
+4 — Notional Dominance (Imbalanced Structures)
+Quantity × Width (owned)  ≥  Quantity × Width (sold)
+When the notional value of the owned side exceeds the sold side, the position has structural profit advantage across all expiration scenarios.
+
+NOTE  Everything else in the system is implementation, scanning, and execution logic built on top of these four ideas.
+
+Section 4
+Iron Condor — Structural Identity
+
+
+4.1  What Is an Iron Condor
+An Iron Condor consists of one call spread and one put spread, both with the same strike difference, entered simultaneously.
+
+Example construction:
+	•	Call spread: 90 / 100
+	•	Put spread: 90 / 100
+	•	Strike difference: 10
+
+4.2  Why Value Is Fixed
+At expiration, only one spread can be in the money at a time. The total value of both spreads combined is always equal to the strike difference:
+Total Value at Expiration  =  Strike Difference
+This is a mathematical identity, not a probability. It holds regardless of where the underlying price settles.
+
+Scenario
+Call Spread
+Put Spread
+Total
+Stock rises sharply
+Full value
+Zero
+= Strike Diff
+Stock falls sharply
+Zero
+Full value
+= Strike Diff
+Stock stays flat
+Partial value
+Partial value
+= Strike Diff
+
+4.3  Profit Lock Conditions
+Because the settlement value is always fixed, profit conditions are simple:
+
+Position
+Condition
+Result
+Buy the condor
+Entry cost < Strike difference
+Guaranteed profit at expiration
+Sell the condor
+Entry credit > Strike difference
+Guaranteed profit at expiration
+
+This is the strongest structural identity in the system. The Iron Condor is always the first structure attempted.
+
+Section 5
+Shifted Iron Condor — Value Range Structure
+
+
+5.1  What Is a Shifted Iron Condor
+A Shifted Iron Condor is similar to a regular Iron Condor, but the call spread and put spread are not centered on the same strikes — they are shifted apart.
+
+Regular Iron Condor (symmetric):
+Put spread: 90 / 100     Call spread: 90 / 100
+Shifted Iron Condor (asymmetric):
+Call spread: 80 / 90     Put spread: 100 / 110
+
+5.2  Difference From Regular Condor
+The regular Iron Condor settles at a fixed value. The Shifted Iron Condor does not settle at a fixed value, but it settles within a known range:
+MinTotalValue  ≤  Position Value  ≤  MaxTotalValue
+Instead of a fixed settlement value, we now work with a bounded range. This changes how profit conditions are defined.
+
+5.3  Expiration Value Range Logic
+At expiration, only one spread can be fully in the money at a time, or both can be partially. The minimum and maximum combined values are calculated as:
+	•	MinTotalValue = minimum possible combined value of both spreads
+	•	MaxTotalValue = maximum possible combined value of both spreads
+
+5.4  Profit Lock Conditions
+Position
+Condition
+Result
+Buy the shifted condor
+Entry cost < MinTotalValue
+Guaranteed profit at expiration
+Sell the shifted condor
+Entry credit > MaxTotalValue
+Guaranteed profit at expiration
+
+5.5  Directional Shift Logic
+The direction of the shift is based on market trend. This tilts the value curve so that profit increases faster in the direction of the trend:
+
+Market Trend
+Structure Orientation
+Effect
+Uptrend
+Put spread shifted above call spread
+Structure reaches max value faster on upside
+Downtrend
+Call spread shifted below put spread
+Structure reaches max value faster on downside
+
+NOTE  The Shifted Condor adds directional bias without adding directional risk. The profit-lock guarantee is maintained through the range relationship.
+
+Section 6
+Butterfly — Structural Inequality
+
+
+6.1  Standard Butterfly Construction
+A Butterfly is built from two spreads on the same side (both calls or both puts), sharing a common middle strike.
+
+Example:
+	•	Buy call spread: 90 / 100   (Spread 1 — owned)
+	•	Sell call spread: 100 / 110   (Spread 2 — sold)
+
+6.2  The Core Inequality
+The key structural property is:
+The second spread cannot gain value until the first spread is already at full value.
+This creates a permanent structural inequality:
+Value(Spread 1)  ≥  Value(Spread 2)     always
+
+6.3  Butterfly Buy Side (Debit — Risk Trade)
+If we PAY to enter the butterfly:
+	•	Entry cost = Spread1 − Spread2
+	•	Maximum profit = StrikeDiff − EntryCost
+	•	Worst case loss = EntryCost
+
+NOTE  Buy side butterflies are defined-risk trades, not profit-locked. The system does not prioritize this side unless part of phase logic.
+
+6.4  Butterfly Sell Side (Credit — Profit Locked)
+If we RECEIVE a credit when entering:
+EntryCredit  =  Spread2 (sold)  −  Spread1 (owned)
+Because Spread1 is always ≥ Spread2:
+	•	Worst case: both spreads equal each other — they cancel — we keep the entry credit
+	•	Best case: Spread1 at full value, Spread2 worthless — maximum profit
+
+Sell Butterfly for a credit  →  Entry credit = guaranteed minimum profit. This is a profit-locked structure.
+
+Scenario at Expiration
+Spread 1 (owned)
+Spread 2 (sold)
+Net P&L
+Both spreads equal
+Value = X
+Value = X
+Cancel → keep entry credit
+Spread 1 full, Spread 2 partial
+Full value
+Partial value
+Net profit + credit
+Spread 1 full, Spread 2 worthless
+Full value
+Zero
+Maximum profit
+
+Section 7
+Shifted Butterfly — Extended Inequality
+
+
+7.1  What Is a Shifted Butterfly
+A Shifted Butterfly is similar to a standard butterfly, but there is a gap between the two spreads — they do not share the exact same middle strike.
+
+Standard Butterfly (shared middle strike):
+Spread 1: 90 / 100     Spread 2: 100 / 110
+Shifted Butterfly (gap between spreads):
+Spread 1: 90 / 100     Spread 2: 105 / 115
+
+7.2  The Inequality Still Holds
+Even with the gap between spreads, the structural inequality is preserved:
+Spread 2 cannot reach full value until the stock has passed through Spread 1.
+Therefore:
+Value(Spread 1)  ≥  Value(Spread 2)     still holds
+
+Sell Shifted Butterfly for credit  →  Guaranteed minimum profit equal to entry credit. Same logic as standard butterfly sell side.
+
+NOTE  This property is often misunderstood. The gap between spreads does not break the inequality. The profit guarantee is maintained.
+
+Section 8
+Imbalanced Structures — Notional Dominance
+
+
+8.1  What Is an Imbalanced Structure
+An Imbalanced Structure is a position where the owned side and sold side do not have equal quantities or widths. Instead, the position is sized so the total notional value of the owned spread exceeds the sold spread.
+
+8.2  Notional Dominance Condition
+Quantity(owned) × Width(owned)  ≥  Quantity(sold) × Width(sold)
+When this condition holds, the position has a structural profit advantage across all expiration scenarios, because the owned side dominates the sold side in total value.
+
+8.3  Leg Count
+Imbalanced structures typically involve 6 or more legs due to the quantity differences. This increases fee costs and must be accounted for in all calculations.
+
+NOTE  Imbalanced structures are used when standard symmetric structures are not available or when efficiency can be improved by adjusting ratios.
+
+Section 9
+Master Structure Reference Table
+
+
+All structures used by the system and their profit-lock conditions:
+
+Structure
+Settlement Type
+Profit Lock Condition
+System Priority
+Iron Condor
+Fixed value
+Buy < StrikeDiff  or  Sell > StrikeDiff
+1 — Strongest
+Shifted Iron Condor
+Bounded range
+Buy < MinTotal  or  Sell > MaxTotal
+2
+Butterfly (Sell Side)
+Inequality
+Credit received = guaranteed minimum profit
+3
+Shifted Butterfly (Sell)
+Inequality (shifted)
+Credit received = guaranteed minimum profit
+4
+Butterfly (Buy Side)
+Peak payoff
+Not profit-locked — defined risk trade
+Phase logic only
+Imbalanced Structure
+Notional dominance
+Owned notional ≥ Sold notional
+5 — Weakest guarantee
+
+The system hierarchy moves from strongest guarantee to weakest guarantee. Iron Condor is always the first structure attempted. The system only falls back to weaker structures when stronger ones are not available.
+
+Section 10
+Spread Pricing Method
+
+
+All spreads in the system are priced using mid prices, not natural (bid/ask) prices. Mid prices represent fair value.
+
+10.1  Mid Price Calculation
+mid  =  (bid + ask)  /  2
+10.2  Spread Price Calculation
+spread price  =  mid(low strike option)  −  mid(high strike option)
+
+Mid prices are used for all calculations across the system:
+	•	Spread pricing
+	•	Strategy pricing
+	•	Profit calculation
+	•	Break-even calculations
+
+NOTE  Natural prices (bid/ask) are only used for liquidity and risk checks — not for structural valuation.
+
+Section 11
+Spread Cap Rule
+
+
+Every spread must be capped so that its value is never zero, negative, or equal to the full strike width. These boundary cases produce invalid spreads and false arbitrage signals.
+
+11.1  Cap Formula
+spread  =  max(0.01,  min(rawSpread,  strikeDiff − 0.01))
+
+11.2  Where the Rule Is Applied
+This rule is applied universally at every stage of the system:
+	•	During scanning
+	•	During entry calculation
+	•	During exit valuation
+	•	During strategy pricing
+
+This rule must never be skipped. A spread at zero or at full width produces invalid structure logic and false profit signals.
+
+Section 12
+Fees and Total Legs
+
+
+Every option contract counts as one leg. Total fees are calculated per structure:
+
+totalFees  =  numberOfLegs  ×  feePerLeg
+
+Structure
+Legs
+Notes
+Single spread
+2
+
+Iron Condor
+4
+
+Butterfly
+4
+
+Imbalanced structure
+6+
+Depends on quantity ratios
+
+NOTE  Fees must be included in all profit calculations and efficiency calculations. Failing to include fees can make marginal trades appear profitable when they are not.
+
+Section 13
+Break-Even Days (BED) — Capital Efficiency Rule
+
+
+The system does not enter trades just because profit exists. The system only enters trades when profit relative to time is high enough. This is the core capital efficiency filter.
+
+13.1  Calculation
+remainingProfit  =  strikeDifference − spreadCost − fees
+remainingPercent  =  remainingProfit  /  strikeDifference
+BreakEvenDays  =  365  ×  remainingPercent
+
+13.2  Entry Rule
+Enter the trade only if:  daysToExpiration  <  BreakEvenDays
+
+This rule ensures that every trade has a high annualized return. It is equivalent to requiring an annual return of at least 100%. The system selects fast, efficient trades — not just profitable trades.
+
+NOTE  A trade with 5% profit in 3 days passes this filter. The same 5% profit with 200 days to expiration does not pass. Speed of profit capture matters.
+
+Section 14
+Strategy Phases Logic
+
+
+The system builds positions in phases because it always attempts the safest and most efficient structures first. The phases follow the structure hierarchy.
+
+Phase
+Action
+Notes
+Phase 1
+Open first spread
+Begin position on one side
+Phase 2
+Complete original Iron Condor
+Add second spread to complete IC
+Phase 3
+Try Shifted Iron Condor
+If standard IC not available
+Phase 4
+Try Butterfly (sell side)
+If condor structures not available
+Phase 4b
+Close / Add / Hold logic
+Position management within existing structure
+Phase 5
+Freeze ticker and retry later
+If no efficient structure available
+
+System structure attempt order: Iron Condor → Shifted Condor → Butterfly (Sell) → Shifted Butterfly → Position Management
+
+NOTE  The system only falls back to a weaker structure when a stronger one is not available. If no structure passes the BED filter, the ticker is frozen and retried later.
+
+Section 15
+Repeat Loop — Scaling Logic
+
+
+After a full structure is completed, the system does not stop. It recalculates efficiency again for the same ticker and expiration.
+
+If daysToExpiration < BreakEvenDays  →  Repeat same structure again
+Else  →  Stop adding to this position
+
+The system scales into profitable structures while they remain efficient. This is a major source of return generation — the system is not limited to one entry per opportunity.
+
+NOTE  Every additional structure entered must independently satisfy the BED filter. The system does not scale into positions that no longer meet the efficiency threshold.
+
+Section 16
+Exit Logic
+
+
+Positions are exited based on one of two conditions:
+
+Exit Trigger
+Description
+Profit captured
+Position has reached target profit level — close to lock in gains
+Efficiency declines
+daysToExpiration >= BreakEvenDays — no longer efficient to hold
+
+Exit logic is part of Step 2 (Execution System) and will be fully documented there. Step 1 outputs the signals and rankings that Step 2 uses to make exit decisions.
+
+Section 17
+Strategy Ranking
+
+
+Step 1 outputs a ranked list of opportunities. Ranking is based on capital efficiency, not absolute profit size. The primary ranking metric is BED-adjusted annualized return.
+
+High-ranked opportunities have:
+	•	Very low daysToExpiration relative to BreakEvenDays
+	•	High remaining profit as a percentage of strike difference
+	•	Strong structural guarantee (Iron Condor ranked higher than Butterfly)
+	•	Low fee cost relative to profit
+
+NOTE  The ranking system ensures capital is allocated to the most efficient trades first, not simply the largest profit opportunities.
+
+Section 18
+Step 1 vs Step 2 — System Boundaries
+
+
+The system is divided into two distinct components with clearly defined responsibilities.
+
+Component
+Step 1 — Signal Engine
+Step 2 — Execution System
+Core role
+Find opportunities
+Execute and manage trades
+Scans options
+Yes
+No
+Calculates structures
+Yes
+Uses Step 1 output
+Calculates BED
+Yes
+References BED for decisions
+Places orders
+No
+Yes
+Manages phases
+Defines phase logic
+Executes phases
+Tracks positions
+No
+Yes
+Handles exits
+Defines exit conditions
+Executes exits
+Handles repeats
+Defines repeat logic
+Executes repeat loop
+Manages margin/risk
+No
+Yes
+
+Step 1 finds opportunities. Step 2 executes and manages trades. No orders are placed in Step 1.
+
+Section 19
+Complete System Flow
+
+
+The complete Step 1 process, in order:
+
+	•	Scan all expirations and strikes
+	•	Calculate spread prices using mid prices
+	•	Apply spread cap rule to all spreads
+	•	Build possible structures (Iron Condor, Shifted Condor, Butterfly)
+	•	Check if each structure locks profit (identity, range, or inequality test)
+	•	Calculate Break-Even Days for each qualifying structure
+	•	Filter: enter only if annual return meets threshold (BED filter)
+	•	Rank all passing opportunities by capital efficiency
+	•	Output ranked opportunity list to Step 2
+	•	Step 2 builds structure in phases
+	•	Step 2 repeats structure while BED filter passes
+	•	Step 2 exits when profit captured or efficiency declines
+
+Section 20
+Executive Summary
+
+
+The system scans option chains to find spread combinations where the structure itself guarantees profit at expiration. It only enters trades when the annualized return exceeds a defined threshold, builds positions using Iron Condors, Shifted Condors, or Butterflies, scales into positions while they remain efficient, and exits when profit is captured or efficiency declines. The system is based on option spread pricing relationships and capital efficiency rather than market direction prediction.
+
+This is not direction trading. This is not volatility trading. This is not theta decay trading.
+
+This is: Option Spread Pricing Arbitrage + Structure Hedging + Capital Efficiency Optimization.

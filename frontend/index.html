@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AlgoTrade — Option Chain Inspector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --accent: #58a6ff; --accent2: #3fb950; --warn: #f78166;
+      --text: #e6edf3; --muted: #8b949e;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; }
+    header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 24px; border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    header h1 { font-size: 1.05rem; font-weight: 600; color: var(--accent); flex: 1; }
+    .badge { font-size: 0.72rem; padding: 2px 9px; border-radius: 20px; font-weight: 500; }
+    .badge.data   { color: var(--muted); background: #21262d; }
+    .badge.config { color: #e3b341; background: rgba(227,179,65,.13); }
+    .settings-btn {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      border-radius: 6px; padding: 5px 12px; font: inherit; font-size: .8rem;
+      cursor: pointer; transition: all .15s;
+    }
+    .settings-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .layout { display: flex; height: calc(100vh - 53px); }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 210px; border-right: 1px solid var(--border);
+      background: var(--surface); padding: 14px 0; overflow-y: auto; flex-shrink: 0;
+    }
+    .sidebar h3 { font-size: .68rem; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .08em; padding: 0 14px 8px; }
+    .ticker-btn {
+      display: block; width: 100%; text-align: left; padding: 7px 14px;
+      background: none; border: none; color: var(--text); font: inherit;
+      font-size: .88rem; cursor: pointer; transition: background .12s;
+    }
+    .ticker-btn:hover, .ticker-btn.active { background: #21262d; color: var(--accent); }
+    .sidebar-run {
+      margin: 12px 14px 4px; width: calc(100% - 28px);
+      background: var(--accent); color: #000; border: none; border-radius: 6px;
+      padding: 7px; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer;
+      transition: opacity .15s;
+    }
+    .sidebar-run:hover { opacity: .85; }
+    .sidebar-run:disabled { opacity: .4; cursor: default; }
+
+    /* MAIN */
+    .main { flex: 1; overflow-y: auto; padding: 22px; }
+    .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+    .toolbar label { font-size: .8rem; color: var(--muted); }
+    select {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 5px 10px; font: inherit; font-size: .83rem; cursor: pointer;
+    }
+    .pill { font-size: .72rem; padding: 2px 10px; border-radius: 20px; font-weight: 600; }
+    .pill.calls { background: rgba(63,185,80,.15); color: var(--accent2); }
+    .pill.puts  { background: rgba(247,129,102,.15); color: var(--warn); }
+    h2 { font-size: .98rem; font-weight: 600; }
+    .stats { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 18px; min-width: 110px; }
+    .stat-card .label { font-size: .68rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; }
+    .stat-card .value { font-size: 1.35rem; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; font-size: .81rem; }
+    thead th { text-align: left; padding: 7px 11px; border-bottom: 2px solid var(--border);
+      color: var(--muted); font-weight: 600; font-size: .7rem; text-transform: uppercase;
+      letter-spacing: .06em; position: sticky; top: 0; background: var(--bg); }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:hover { background: rgba(88,166,255,.05); }
+    tbody td { padding: 6px 11px; }
+    .mid { font-weight: 600; color: var(--accent); }
+    .call-row td:first-child { border-left: 3px solid var(--accent2); }
+    .put-row  td:first-child { border-left: 3px solid var(--warn); }
+    .empty { text-align: center; padding: 48px; color: var(--muted); font-size: .9rem; }
+    .loader { text-align: center; padding: 32px; color: var(--muted); font-size: .85rem; }
+    .refresh-btn {
+      margin-left: auto; background: var(--accent); color: #000; border: none;
+      border-radius: 6px; padding: 6px 14px; font: inherit; font-size: .8rem;
+      font-weight: 600; cursor: pointer; transition: opacity .15s;
+    }
+    .refresh-btn:hover { opacity: .85; }
+
+    /* SETTINGS MODAL */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+      z-index: 100; align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 28px 32px; min-width: 380px; max-width: 460px; width: 100%;
+    }
+    .modal h2 { font-size: .98rem; margin-bottom: 20px; }
+    .form-row { margin-bottom: 16px; }
+    .form-row label { display: block; font-size: .75rem; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    .form-row select, .form-row input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      border-radius: 7px; padding: 8px 12px; font: inherit; font-size: .88rem;
+    }
+    .form-row input:focus, .form-row select:focus { border-color: var(--accent); outline: none; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; }
+    .btn-cancel {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      border-radius: 7px; padding: 7px 16px; font: inherit; font-size: .85rem; cursor: pointer;
+    }
+    .btn-save {
+      background: var(--accent); color: #000; border: none; border-radius: 7px;
+      padding: 7px 18px; font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer;
+    }
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; background: var(--accent2);
+      color: #000; padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: .85rem;
+      opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 200;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ Option Chain Inspector</h1>
+  <span class="badge data" id="dataBadge">data: —</span>
+  <span class="badge config" id="configBadge">configured: —</span>
+  <button class="settings-btn" onclick="openSettings()">⚙ Settings</button>
+</header>
+
+<div class="layout">
+  <nav class="sidebar">
+    <h3>Tickers</h3>
+    <div id="tickerList"><div class="loader">Loading…</div></div>
+    <button class="sidebar-run" id="runBtn" onclick="runPipeline()">▶ Run Pipeline</button>
+  </nav>
+  <main class="main">
+    <div id="content" class="empty">← Select a ticker to view its option chain from the Redis cache.</div>
+  </main>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeSettings()">
+  <div class="modal">
+    <h2>⚙ Settings</h2>
+    <div class="form-row">
+      <label>Active Provider</label>
+      <select id="settingProvider">
+        <option value="yfinance">yfinance (free, no key)</option>
+        <option value="tradier">tradier (Tradier.com)</option>
+        <option value="theta">theta (ThetaData Pro)</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Tradier Access Token</label>
+      <input type="password" id="settingTradierToken" placeholder="leave blank to keep existing" />
+    </div>
+    <div class="form-row">
+      <label>ThetaData Username</label>
+      <input type="text" id="settingThetaUser" placeholder="email@example.com" />
+    </div>
+    <div class="form-row">
+      <label>Redis Host</label>
+      <input type="text" id="settingRedisHost" placeholder="127.0.0.1" />
+    </div>
+    <div class="form-row">
+      <label>Redis Port</label>
+      <input type="text" id="settingRedisPort" placeholder="6379" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
+      <button class="btn-save" onclick="saveSettings()">Save & Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const API = 'http://localhost:5001/api';
+  let currentTicker = null, currentExp = null, allTicks = [];
+
+  function showToast(msg, ok=true) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.background = ok ? 'var(--accent2)' : 'var(--warn)';
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  async function loadStatus() {
+    const res = await fetch(`${API}/status`).catch(() => null);
+    if (!res || !res.ok) return;
+    const d = await res.json();
+    document.getElementById('configBadge').textContent = `configured: ${d.configured_provider}`;
+  }
+
+  async function loadTickers() {
+    await loadStatus();
+    const res = await fetch(`${API}/tickers`).catch(() => null);
+    const list = document.getElementById('tickerList');
+    if (!res || !res.ok) {
+      list.innerHTML = '<div style="padding:12px;color:#f78166;font-size:.8rem">⚠ API offline</div>';
+      return;
+    }
+    const { tickers } = await res.json();
+    if (!tickers.length) {
+      list.innerHTML = '<div style="padding:12px;color:#8b949e;font-size:.8rem">No data in cache.<br>Run the pipeline first.</div>';
+      return;
+    }
+    list.innerHTML = tickers.map(t =>
+      `<button class="ticker-btn" onclick="selectTicker('${t}')">${t}</button>`
+    ).join('');
+  }
+
+  async function selectTicker(ticker) {
+    currentTicker = ticker; currentExp = null;
+    document.querySelectorAll('.ticker-btn').forEach(b => b.classList.toggle('active', b.textContent === ticker));
+    document.getElementById('content').innerHTML = '<div class="loader">Fetching…</div>';
+    const res = await fetch(`${API}/chain/${ticker}`).catch(() => null);
+    if (!res || !res.ok) { document.getElementById('content').innerHTML = '<div class="empty">API error</div>'; return; }
+    const data = await res.json();
+    allTicks = data.ticks || [];
+    renderChain(ticker, allTicks);
+  }
+
+  function renderChain(ticker, ticks) {
+    if (!ticks.length) { document.getElementById('content').innerHTML = '<div class="empty">No ticks for this ticker in cache.</div>'; return; }
+    const exps = [...new Set(ticks.map(t => t.expiration))].sort();
+    const exp = currentExp || exps[0]; currentExp = exp;
+    const filtered = ticks.filter(t => t.expiration === exp);
+    const calls = filtered.filter(t => t.right === 'C').sort((a,b) => a.strike - b.strike);
+    const puts  = filtered.filter(t => t.right === 'P').sort((a,b) => a.strike - b.strike);
+    const provider = ticks[0]?.provider || '—';
+    document.getElementById('dataBadge').textContent = `data: ${provider}`;
+    const expSelect = exps.map(e => `<option value="${e}" ${e===exp?'selected':''}>${e}</option>`).join('');
+    document.getElementById('content').innerHTML = `
+      <div class="toolbar">
+        <h2>${ticker}</h2>
+        <label>Exp: <select onchange="currentExp=this.value;renderChain('${ticker}',allTicks)">${expSelect}</select></label>
+        <span class="pill calls">Calls: ${calls.length}</span>
+        <span class="pill puts">Puts: ${puts.length}</span>
+        <button class="refresh-btn" onclick="selectTicker('${ticker}')">↻ Refresh</button>
+      </div>
+      <div class="stats">
+        <div class="stat-card"><div class="label">Ticks</div><div class="value">${filtered.length}</div></div>
+        <div class="stat-card"><div class="label">Expirations</div><div class="value">${exps.length}</div></div>
+        <div class="stat-card"><div class="label">Data Provider</div><div class="value" style="font-size:.95rem">${provider}</div></div>
+      </div>
+      ${buildTable(calls, 'C')}<br>${buildTable(puts, 'P')}`;
+  }
+
+  function buildTable(rows, right) {
+    const cls = right === 'C' ? 'call-row' : 'put-row';
+    const label = right === 'C' ? '📈 Calls' : '📉 Puts';
+    if (!rows.length) return `<p style="color:#8b949e;font-size:.85rem">${label}: no data</p>`;
+    return `
+      <h3 style="margin-bottom:8px;font-size:.83rem;color:${right==='C'?'#3fb950':'#f78166'}">${label}</h3>
+      <table>
+        <thead><tr><th>Strike</th><th>Bid</th><th>Ask</th><th>Mid</th><th>Volume</th><th>OI</th><th>Timestamp</th></tr></thead>
+        <tbody>${rows.map(t => `
+          <tr class="${cls}">
+            <td>${t.strike}</td><td>${t.bid}</td><td>${t.ask}</td>
+            <td class="mid">${t.mid}</td><td>${t.volume}</td><td>${t.open_interest}</td>
+            <td style="color:#8b949e;font-size:.73rem">${t.timestamp?.slice(0,19)??'—'}</td>
+          </tr>`).join('')}</tbody>
+      </table>`;
+  }
+
+  async function runPipeline() {
+    const btn = document.getElementById('runBtn');
+    btn.disabled = true; btn.textContent = '⏳ Running…';
+    const res = await fetch(`${API}/run-pipeline`, {method:'POST'}).catch(() => null);
+    if (!res || !res.ok) { showToast('Pipeline failed to start', false); }
+    else {
+      const d = await res.json();
+      showToast(`Pipeline started with provider: ${d.provider}`);
+      setTimeout(() => { loadTickers(); if (currentTicker) selectTicker(currentTicker); }, 5000);
+    }
+    setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Run Pipeline'; }, 6000);
+  }
+
+  async function openSettings() {
+    const res = await fetch(`${API}/settings`).catch(() => null);
+    if (res && res.ok) {
+      const d = await res.json();
+      document.getElementById('settingProvider').value = d.DATA_PROVIDER || 'yfinance';
+      document.getElementById('settingThetaUser').value = d.THETA_USERNAME || '';
+      document.getElementById('settingRedisHost').value = d.REDIS_HOST || '127.0.0.1';
+      document.getElementById('settingRedisPort').value = d.REDIS_PORT || '6379';
+    }
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  function closeSettings() { document.getElementById('modalOverlay').classList.remove('open'); }
+
+  async function saveSettings() {
+    const payload = { DATA_PROVIDER: document.getElementById('settingProvider').value };
+    const token = document.getElementById('settingTradierToken').value;
+    if (token) payload.TRADIER_ACCESS_TOKEN = token;
+    const user = document.getElementById('settingThetaUser').value;
+    if (user) payload.THETA_USERNAME = user;
+    payload.REDIS_HOST = document.getElementById('settingRedisHost').value || '127.0.0.1';
+    payload.REDIS_PORT = document.getElementById('settingRedisPort').value || '6379';
+    const res = await fetch(`${API}/settings`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    }).catch(() => null);
+    if (res && res.ok) {
+      showToast(`Settings saved! Provider: ${payload.DATA_PROVIDER}`);
+      closeSettings();
+      loadStatus();
+    } else {
+      showToast('Failed to save settings', false);
+    }
+  }
+
+  loadTickers();
+</script>
+</body>
+</html>

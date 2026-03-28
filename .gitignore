@@ -25,3 +25,24 @@ venv/
 
 #encrypted private key
 eth-wallet.keystore
+
+#configuration
+config/
+
+#environment variables
+.env
+.DS_Store
+frontend.log
+.conda
+cache/
+
+#logs
+*.log
+*.log.*
+*.log.*.*
+*.log.*.*.*
+*.log.*.*.*.*
+*.log.*.*.*.*.*
+*.log.*.*.*.*.*.*
+*.log.*.*.*.*.*.*.*
+*.log.*.*.*.*.*.*.*.*
