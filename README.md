@@ -304,37 +304,7 @@ All data needed for Phase 3 order execution included.
 
 ---
 
-## Documentation
 
-### Getting Started
-- `README.md` - This file (main overview)
-- `SETUP_GUIDE.md` - **NEW**: Complete setup instructions
-- `.env.example` - **NEW**: Configuration template
-- `verify_setup.py` - **NEW**: System verification tool
-- `PROVIDER_QUICKREF.md` - Provider quick reference
-
-### Testing
-- `tests/strategies/README.md` - Strategy tests (69 tests)
-- `tests/providers/README.md` - **NEW**: Provider tests (14 tests)
-- `COMPLETE_SYSTEM_TESTING.md` - Complete test summary (83 tests)
-- `PROVIDER_TESTS_SUMMARY.md` - **NEW**: Provider testing summary
-
-### Implementation Details
-- `PIPELINE_COMPLETE.md` - Pipeline flow details
-- `RANK_SCORE_COMPLETE.md` - Rank score implementation
-- `ANNUAL_RETURN_COMPLETE.md` - Annual return calculation
-- `PROVIDER_TESTING_COMPLETE.md` - **NEW**: Provider framework details
-- `PROVIDER_TESTING_IMPLEMENTATION.md` - **NEW**: Implementation summary
-
-### Quick References
-- `PHASE2_QUICKREF.md` - Phase 2 quick reference
-- `PROVIDER_QUICKREF.md` - **NEW**: Provider quick reference
-
-### Templates & Guides
-- `tests/providers/PROVIDER_TEMPLATES.md` - **NEW**: Add new providers
-- `LIVE_PROVIDER_TESTING.md` - **NEW**: Live testing guide
-
----
 
 ## Key Features
 
@@ -494,34 +464,23 @@ python cli/redis_cleanup.py                                # Clear all data
 python cli/redis_backup.py                                 # Backup Redis
 ```
 
----
-
 ## Documentation Index
 
 ### Core Documentation
 - `README.md` - This file (main overview)
-- `COMPLETE_SYSTEM_TESTING.md` - Complete test summary
-- `ALGORITHM_FLOW.md` - Algorithm flow diagram
+- `SETUP_GUIDE.md` - Complete setup instructions
+- `docs/ALGORITHM_FLOW.md` - Algorithm flow diagram
+- `docs/SIGNAL_STRUCTURE.md` - Signal JSON structure details
 
-### Phase-Specific
-- `PHASE2_COMPLETE.md` - Phase 2 implementation details
-- `PHASE2_SUMMARY.md` - Phase 2 summary
-- `PHASE2_QUICKREF.md` - Phase 2 quick reference
-
-### Feature-Specific
-- `PIPELINE_COMPLETE.md` - Pipeline testing details
-- `RANK_SCORE_COMPLETE.md` - Rank score implementation
-- `ANNUAL_RETURN_COMPLETE.md` - Annual return calculation
-- `PROVIDER_TESTING_COMPLETE.md` - Provider framework
-- `PROVIDER_QUICKREF.md` - Provider quick reference
+### Technical Specs & References
+- `docs/Options_Arbitrage_System_Step1.docx` - Original spec
+- `docs/Options_Arbitrage_System_Step1.txt` - Text spec
+- `docs/options_strategy_algorithm.pdf` - Strategy algorithm details
+- `frontend/SIGNALS_UI_SPEC.md` - UI specification
 
 ### Testing
 - `tests/strategies/README.md` - Strategy test guide (69 tests)
 - `tests/providers/README.md` - Provider test guide (14 tests)
-- `tests/providers/PROVIDER_TEMPLATES.md` - Provider templates
-
-### UI
-- `frontend/SIGNALS_UI_SPEC.md` - UI specification
 
 ---
 
