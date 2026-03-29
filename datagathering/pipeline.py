@@ -59,18 +59,39 @@ def run():
     logger.info(f"Pipeline complete. Total ticks in cache: {total}")
 
 
+def _run_scan_bg(symbol: str) -> None:
+    """Worker function that runs Phase 2 scan in background process."""
+    import logging
+    import sys
+    
+    # Configure logging for child process
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        stream=sys.stdout
+    )
+    logger = logging.getLogger(__name__)
+    
+    try:
+        from filters.phase2strat1.scan import run_scan_for_symbol
+        logger.info(f"[pipeline] Background: Triggering Phase 2 scan for {symbol}...")
+        result = run_scan_for_symbol(symbol)
+        logger.info(f"[pipeline] Background: Phase 2 scan complete for {symbol}: {result.get('signals_upserted', 0)} signals")
+    except Exception as e:
+        logger.error(f"[pipeline] Background: Phase 2 scan failed for {symbol}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
 def trigger_phase2_scan(symbol: str) -> None:
     """
     Auto-trigger Phase 2 scan for a symbol after its data is loaded.
     Runs in background to avoid blocking the pipeline.
     """
-    try:
-        from filters.phase2strat1.scan import run_scan_for_symbol
-        logger.info(f"[pipeline] Triggering Phase 2 scan for {symbol}...")
-        result = run_scan_for_symbol(symbol)
-        logger.info(f"[pipeline] Phase 2 scan complete for {symbol}: {result.get('signals_upserted', 0)} signals")
-    except Exception as e:
-        logger.error(f"[pipeline] Phase 2 scan failed for {symbol}: {e}")
+    import multiprocessing
+    p = multiprocessing.Process(target=_run_scan_bg, args=(symbol,))
+    p.start()
+    logger.info(f"[pipeline] Spawned background Phase 2 scan for {symbol} (PID will be assigned)")
 
 
 if __name__ == "__main__":

@@ -112,6 +112,9 @@ def get_all_tickers() -> List[str]:
     tickers = set()
     for key in keys:
         parts = key.split(":")
+        # Skip metadata keys (CHAIN:META:...) to avoid collision with "META" ticker
+        if len(parts) >= 3 and parts[1] == "META":
+            continue
         if len(parts) >= 2:
             tickers.add(parts[1])
     return sorted(tickers)

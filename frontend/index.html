@@ -604,7 +604,7 @@
     const symbol = document.getElementById('histSymbol').value;
     const eventType = document.getElementById('histEventType').value;
     
-    const params = new URLSearchParams({limit: 200});
+    const params = new URLSearchParams({limit: 500});
     if (symbol) params.append('symbol', symbol.toUpperCase());
     if (eventType) params.append('event_type', eventType);
     
@@ -616,20 +616,47 @@
     
     const {events} = await res.json();
     if (!events || events.length === 0) {
-      content.innerHTML = '<div class="empty">No history events yet.</div>';
+      content.innerHTML = '<div class="empty">No history events found with current filters.</div>';
       return;
     }
     
+    // Count event types
+    const eventCounts = {};
+    events.forEach(e => {
+      eventCounts[e.event_type] = (eventCounts[e.event_type] || 0) + 1;
+    });
+    const countBadges = Object.entries(eventCounts).map(([type, count]) => 
+      `<span class="badge data">${type}: ${count}</span>`
+    ).join(' ');
+    
     const rows = events.map((evt, idx) => {
       const payload = evt.payload || {};
-      const hasChainSnapshot = payload.chain_snapshot && Array.isArray(payload.chain_snapshot);
       
-      // Build payload preview (exclude chain_snapshot from preview)
-      const payloadForPreview = {...payload};
-      if (hasChainSnapshot) {
-        payloadForPreview.chain_snapshot = `[${payload.chain_snapshot.length} ticks]`;
+      // Build smart payload summary based on event type
+      let payloadSummary = '';
+      if (evt.event_type === 'signal_upserted') {
+        const strats = payload.all_strategy_details || {};
+        const stratTypes = Object.keys(strats);
+        const bestType = payload.best_strategy_type || '—';
+        const bestRank = payload.best_rank_score ? payload.best_rank_score.toFixed(4) : '—';
+        const bestBed = payload.best_bed ? payload.best_bed.toFixed(1) : '—';
+        const dte = payload.dte || '—';
+        
+        payloadSummary = `
+          <div style="font-size:.75rem;">
+            <strong>Best:</strong> ${bestType} (rank=${bestRank}, BED=${bestBed})<br>
+            <strong>DTE:</strong> ${dte} | <strong>Strategies:</strong> ${stratTypes.length} types<br>
+            <strong>Passed BED:</strong> ${(payload.strategies_passed_bed || []).join(', ')}
+          </div>`;
+      } else if (evt.event_type === 'phase3_open_fail' || evt.event_type === 'phase3_open_ok') {
+        payloadSummary = `<div style="font-size:.75rem;">${JSON.stringify(payload).slice(0, 100)}...</div>`;
+      } else {
+        const payloadForPreview = {...payload};
+        if (payload.chain_snapshot) {
+          payloadForPreview.chain_snapshot = '[...]';
+        }
+        payloadSummary = `<div style="font-size:.75rem;color:var(--muted);">${JSON.stringify(payloadForPreview).slice(0, 100)}...</div>`;
       }
-      const payloadPreview = JSON.stringify(payloadForPreview).slice(0, 60);
       
       const hasExpiration = evt.expiration && evt.expiration !== 'N/A';
       const viewChainLink = hasExpiration 
@@ -641,13 +668,15 @@
       window.historyEvents = window.historyEvents || [];
       window.historyEvents[idx] = evt;
       
+      const hasChainSnapshot = payload.chain_snapshot && (Array.isArray(payload.chain_snapshot) || typeof payload.chain_snapshot === 'object');
+      
       return `
         <tr class="clickable" onclick="toggleHistoryPayload(${idx})">
           <td style="font-size:.75rem;color:var(--muted);">${evt.ts.slice(0, 19)}</td>
           <td><strong>${evt.event_type}</strong></td>
           <td>${evt.symbol}${evt.expiration ? ' / ' + evt.expiration : ''}</td>
           <td style="font-size:.75rem;">${evt.signal_id || '—'}</td>
-          <td style="font-size:.75rem;color:var(--muted);">${payloadPreview}${payloadPreview.length < JSON.stringify(payloadForPreview).length ? '...' : ''}</td>
+          <td>${payloadSummary}</td>
           <td>${viewChainLink}</td>
         </tr>
         <tr id="payload-${idx}" style="display:none;">
@@ -658,6 +687,10 @@
     }).join('');
     
     content.innerHTML = `
+      <div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
+        <span style="font-size: .85rem; color: var(--muted);">Showing ${events.length} events:</span>
+        ${countBadges}
+      </div>
       <table>
         <thead>
           <tr>

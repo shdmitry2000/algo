@@ -148,15 +148,30 @@ def get_history(
 ) -> List[HistoryEvent]:
     """
     Query history (newest first). Supports filtering.
-    Basic implementation: retrieve, parse, filter in-memory. Production could use per-pair lists.
+    
+    Note: When filters are applied, we retrieve more events from Redis to ensure
+    we return up to `limit` matching events after filtering.
     """
     client = get_redis_client()
-    # LRANGE returns oldest at the end (index 0 = newest)
-    raw = client.lrange("SIGNAL:HISTORY", offset, offset + limit - 1)
+    
+    # If filters are applied, retrieve significantly more events to ensure matches
+    # signal_upserted events may be buried deep (e.g., position 300+) after many phase3_open_fail
+    has_filters = any([symbol, expiration, signal_id, event_type])
+    if has_filters:
+        # Fetch up to 2000 events when filtering to ensure we find matches
+        fetch_limit = min(2000, max(1000, (limit + offset) * 10))
+    else:
+        fetch_limit = limit + offset
+    
+    # LRANGE returns index 0 = newest
+    raw = client.lrange("SIGNAL:HISTORY", 0, fetch_limit - 1)
     events = []
+    skipped = 0
+    
     for item in raw:
         try:
             evt = HistoryEvent.from_json(item)
+            
             # Apply filters
             if symbol and evt.symbol != symbol:
                 continue
@@ -166,9 +181,21 @@ def get_history(
                 continue
             if event_type and evt.event_type != event_type:
                 continue
+            
+            # Apply offset after filtering
+            if skipped < offset:
+                skipped += 1
+                continue
+            
             events.append(evt)
+            
+            # Stop when we have enough results
+            if len(events) >= limit:
+                break
+                
         except Exception as e:
             logger.warning(f"[signal_cache] Failed to parse history event: {e}")
+    
     return events
 
 

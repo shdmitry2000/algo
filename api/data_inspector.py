@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from storage.cache_manager import get_all_tickers, get_chain
+from storage.cache_manager import get_chain
 from storage.signal_cache import (
     list_active_signals,
     get_active_signal,
@@ -114,7 +114,12 @@ def save_settings():
 
 @app.route("/api/tickers")
 def list_tickers():
-    tickers = get_all_tickers()
+    """Return configured tickers from settings.yaml."""
+    import yaml
+    settings_path = os.path.join(os.path.dirname(__file__), "..", "config", "settings.yaml")
+    with open(settings_path) as f:
+        config = yaml.safe_load(f)
+    tickers = config.get("tickers", [])
     return jsonify({"tickers": tickers})
 
 
