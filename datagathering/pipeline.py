@@ -52,8 +52,25 @@ def run():
         count = push_chain(ticks)
         total += count
         logger.info(f"{ticker}: {count} ticks pushed to Redis")
+        
+        # Auto-trigger Phase 2 scan for this symbol (all its expirations)
+        trigger_phase2_scan(ticker)
 
     logger.info(f"Pipeline complete. Total ticks in cache: {total}")
+
+
+def trigger_phase2_scan(symbol: str) -> None:
+    """
+    Auto-trigger Phase 2 scan for a symbol after its data is loaded.
+    Runs in background to avoid blocking the pipeline.
+    """
+    try:
+        from filters.phase2strat1.scan import run_scan_for_symbol
+        logger.info(f"[pipeline] Triggering Phase 2 scan for {symbol}...")
+        result = run_scan_for_symbol(symbol)
+        logger.info(f"[pipeline] Phase 2 scan complete for {symbol}: {result.get('signals_upserted', 0)} signals")
+    except Exception as e:
+        logger.error(f"[pipeline] Phase 2 scan failed for {symbol}: {e}")
 
 
 if __name__ == "__main__":

@@ -36,6 +36,9 @@ frontend.log
 .conda
 cache/
 
+# Local data dumps (often huge; GitHub limit 100 MB)
+backups/
+
 #logs
 *.log
 *.log.*

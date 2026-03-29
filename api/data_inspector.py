@@ -4,8 +4,15 @@ Endpoints:
   GET /api/tickers              — list all tickers in cache
   GET /api/chain/<ticker>       — all ticks for ticker
   GET /api/chain/<ticker>/<exp> — ticks for a specific expiration
+  
+  Phase 2 Signal endpoints:
+  GET /api/signals/active       — list all active signals
+  GET /api/signals/active/<symbol>/<expiration> — one active signal
+  GET /api/signals/history      — query history (with filters)
+  POST /api/signal-scan         — trigger Phase 2 scan
+  POST /api/signals/phase3-outcome — record Phase 3 open success/failure
 """
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
 import sys
@@ -13,6 +20,16 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from storage.cache_manager import get_all_tickers, get_chain
+from storage.signal_cache import (
+    list_active_signals,
+    get_active_signal,
+    get_history,
+    get_latest_run,
+    get_run_metadata,
+    record_phase3_open_success,
+    record_phase3_open_failure,
+    get_gate
+)
 
 app = Flask(__name__)
 CORS(app)  # Allow all origins — frontend runs on a different port
@@ -113,6 +130,127 @@ def chain_exp(ticker, expiration):
     ticks = get_chain(ticker.upper(), expiration)
     return jsonify({"ticker": ticker.upper(), "expiration": expiration,
                     "count": len(ticks), "ticks": [t.to_dict() for t in ticks]})
+
+
+# ===== PHASE 2 SIGNAL ENDPOINTS =====
+
+@app.route("/api/signals/active")
+def get_active_signals_list():
+    """List all active signals (one per symbol+expiration)."""
+    signals = list_active_signals()
+    
+    # Enrich with gate status
+    result = []
+    for sig in signals:
+        gate = get_gate(sig.symbol, sig.expiration)
+        result.append({
+            **sig.to_dict(),
+            "gate_status": gate.status if gate else "idle",
+            "gate_locked_signal_id": gate.locked_signal_id if gate else None
+        })
+    
+    return jsonify({
+        "count": len(result),
+        "signals": result
+    })
+
+
+@app.route("/api/signals/active/<symbol>/<expiration>")
+def get_single_active_signal(symbol, expiration):
+    """Get single active signal + gate."""
+    signal = get_active_signal(symbol, expiration)
+    gate = get_gate(symbol, expiration)
+    
+    if not signal:
+        return jsonify({"signal": None, "gate": gate.to_dict() if gate else None}), 404
+    
+    return jsonify({
+        "signal": signal.to_dict(),
+        "gate": gate.to_dict() if gate else None
+    })
+
+
+@app.route("/api/signals/history")
+def get_signals_history():
+    """Query history with optional filters."""
+    limit = int(request.args.get("limit", 100))
+    offset = int(request.args.get("offset", 0))
+    symbol = request.args.get("symbol")
+    expiration = request.args.get("expiration")
+    signal_id = request.args.get("signal_id")
+    event_type = request.args.get("event_type")
+    
+    events = get_history(
+        limit=limit,
+        offset=offset,
+        symbol=symbol,
+        expiration=expiration,
+        signal_id=signal_id,
+        event_type=event_type
+    )
+    
+    return jsonify({
+        "count": len(events),
+        "events": [e.to_dict() for e in events]
+    })
+
+
+@app.route("/api/signal-scan", methods=["POST"])
+def trigger_signal_scan():
+    """Trigger Phase 2 scan."""
+    import subprocess
+    script_path = os.path.join(os.path.dirname(__file__), "..", "cli", "run_phase2_scan.py")
+    conda_py = os.path.join(os.path.dirname(__file__), "..", ".conda", "bin", "python")
+    
+    # Run async
+    subprocess.Popen([conda_py, script_path], cwd=os.path.join(os.path.dirname(__file__), ".."))
+    
+    return jsonify({"status": "started", "message": "Phase 2 scan triggered"})
+
+
+@app.route("/api/signals/phase3-outcome", methods=["POST"])
+def record_phase3_outcome():
+    """Record Phase 3 open success or failure."""
+    data = request.get_json() or {}
+    signal_id = data.get("signal_id")
+    symbol = data.get("symbol")
+    expiration = data.get("expiration")
+    status = data.get("status")  # "open_ok" or "open_fail"
+    detail = data.get("detail", {})
+    
+    if not all([signal_id, symbol, expiration, status]):
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    if status == "open_ok":
+        record_phase3_open_success(signal_id, symbol, expiration, detail)
+    elif status == "open_fail":
+        reason = data.get("reason", "unknown")
+        record_phase3_open_failure(signal_id, symbol, expiration, reason, detail)
+    else:
+        return jsonify({"error": f"Invalid status: {status}"}), 400
+    
+    return jsonify({"status": "recorded"})
+
+
+@app.route("/api/signal-runs")
+def list_signal_runs():
+    """List recent run metadata."""
+    # Optional batch run support
+    latest = get_latest_run()
+    if not latest:
+        return jsonify({"runs": []})
+    
+    latest_meta = get_run_metadata(latest)
+    return jsonify({"runs": [latest_meta] if latest_meta else []})
+
+
+@app.route("/api/signal-runs/<run_id>")
+def get_signal_run(run_id):
+    """Get run metadata by ID."""
+    meta = get_run_metadata(run_id)
+    if not meta:
+        return jsonify({"error": "Run not found"}), 404
+    return jsonify(meta)
 
 
 if __name__ == "__main__":

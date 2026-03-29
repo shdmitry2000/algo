@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AlgoTrade — Option Chain Inspector</title>
+  <title>AlgoTrade — Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -19,10 +19,22 @@
       padding: 14px 24px; border-bottom: 1px solid var(--border);
       background: var(--surface);
     }
-    header h1 { font-size: 1.05rem; font-weight: 600; color: var(--accent); flex: 1; }
+    header h1 { font-size: 1.05rem; font-weight: 600; color: var(--accent); }
+    .tabs { display: flex; gap: 4px; flex: 1; }
+    .tab-btn {
+      background: none; border: none; color: var(--muted); padding: 6px 16px;
+      font: inherit; font-size: .85rem; font-weight: 500; cursor: pointer;
+      border-bottom: 2px solid transparent; transition: all .15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
     .badge { font-size: 0.72rem; padding: 2px 9px; border-radius: 20px; font-weight: 500; }
     .badge.data   { color: var(--muted); background: #21262d; }
     .badge.config { color: #e3b341; background: rgba(227,179,65,.13); }
+    .badge.gate-idle { color: var(--muted); background: #21262d; }
+    .badge.gate-signal_pending_open { color: var(--warn); background: rgba(247,129,102,.15); }
+    .badge.gate-cleared_after_open { color: var(--accent2); background: rgba(63,185,80,.15); }
+    .badge.gate-cleared_after_fail { color: var(--warn); background: rgba(247,129,102,.15); }
     .settings-btn {
       background: none; border: 1px solid var(--border); color: var(--muted);
       border-radius: 6px; padding: 5px 12px; font: inherit; font-size: .8rem;
@@ -64,6 +76,16 @@
     .pill { font-size: .72rem; padding: 2px 10px; border-radius: 20px; font-weight: 600; }
     .pill.calls { background: rgba(63,185,80,.15); color: var(--accent2); }
     .pill.puts  { background: rgba(247,129,102,.15); color: var(--warn); }
+    
+    /* EXPIRATION BUTTONS */
+    .exp-list { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .exp-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 6px; padding: 6px 14px; font: inherit; font-size: .8rem;
+      cursor: pointer; transition: all .15s; font-weight: 500;
+    }
+    .exp-btn:hover { border-color: var(--accent); color: var(--text); }
+    .exp-btn.active { border-color: var(--accent); background: rgba(88,166,255,.12); color: var(--accent); font-weight: 600; }
     h2 { font-size: .98rem; font-weight: 600; }
     .stats { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
     .stat-card { background: var(--surface); border: 1px solid var(--border);
@@ -124,26 +146,99 @@
       opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 200;
     }
     .toast.show { opacity: 1; }
+    
+    /* TAB CONTENT */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    
+    /* SIGNALS TAB */
+    .signals-toolbar {
+      display: flex; gap: 10px; align-items: center; margin-bottom: 18px;
+    }
+    .scan-btn {
+      background: var(--accent2); color: #000; border: none; border-radius: 6px;
+      padding: 7px 16px; font: inherit; font-size: .85rem; font-weight: 600;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .scan-btn:hover { opacity: .85; }
+    .scan-btn:disabled { opacity: .4; cursor: default; }
+    tbody tr.clickable { cursor: pointer; }
+    tbody tr.clickable:hover { background: rgba(88,166,255,.08); }
+    
+    /* DETAIL MODAL */
+    .modal.detail-modal { min-width: 700px; max-width: 900px; max-height: 85vh; overflow-y: auto; }
+    .detail-section { margin-bottom: 24px; }
+    .detail-section h3 { font-size: .85rem; color: var(--muted); margin-bottom: 10px; 
+      text-transform: uppercase; letter-spacing: .08em; }
+    .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); 
+      gap: 12px; margin-bottom: 18px; }
+    .detail-metric { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+    .detail-metric .label { font-size: .68rem; color: var(--muted); margin-bottom: 4px; }
+    .detail-metric .value { font-size: 1.1rem; font-weight: 600; }
+    pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+      padding: 12px; font-size: .75rem; overflow-x: auto; max-height: 300px; overflow-y: auto; }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>⚡ Option Chain Inspector</h1>
+  <h1>⚡ AlgoTrade Dashboard</h1>
+  <nav class="tabs">
+    <button class="tab-btn active" onclick="showTab('chains')">Chains</button>
+    <button class="tab-btn" onclick="showTab('signals')">Signals</button>
+    <button class="tab-btn" onclick="showTab('history')">History</button>
+  </nav>
   <span class="badge data" id="dataBadge">data: —</span>
   <span class="badge config" id="configBadge">configured: —</span>
   <button class="settings-btn" onclick="openSettings()">⚙ Settings</button>
 </header>
 
 <div class="layout">
-  <nav class="sidebar">
-    <h3>Tickers</h3>
-    <div id="tickerList"><div class="loader">Loading…</div></div>
-    <button class="sidebar-run" id="runBtn" onclick="runPipeline()">▶ Run Pipeline</button>
-  </nav>
-  <main class="main">
-    <div id="content" class="empty">← Select a ticker to view its option chain from the Redis cache.</div>
-  </main>
+  <!-- Tab 1: Chains (existing) -->
+  <div id="chainsTab" class="tab-content active">
+    <nav class="sidebar">
+      <h3>Tickers</h3>
+      <div id="tickerList"><div class="loader">Loading…</div></div>
+      <button class="sidebar-run" id="runBtn" onclick="runPipeline()">▶ Run Pipeline</button>
+    </nav>
+    <main class="main">
+      <div id="content" class="empty">← Select a ticker to view its option chain from the Redis cache.</div>
+    </main>
+  </div>
+
+  <!-- Tab 2: Signals (NEW) -->
+  <div id="signalsTab" class="tab-content">
+    <main class="main" style="width: 100%;">
+      <div class="signals-toolbar">
+        <h2>Active Signals</h2>
+        <button class="scan-btn" id="scanBtn" onclick="triggerScan()">🔍 Run Phase 2 Scan</button>
+        <button class="refresh-btn" onclick="loadSignals()">↻ Refresh</button>
+      </div>
+      <div id="signalsContent"><div class="loader">Loading signals…</div></div>
+    </main>
+  </div>
+
+  <!-- Tab 3: History (NEW) -->
+  <div id="historyTab" class="tab-content">
+    <main class="main" style="width: 100%;">
+      <div class="toolbar">
+        <h2>Signal History</h2>
+        <label>Symbol: <input type="text" id="histSymbol" placeholder="all" style="width:90px;padding:4px 8px;"></label>
+        <label>Event: <select id="histEventType">
+          <option value="">all</option>
+          <option value="precheck_fail">precheck_fail</option>
+          <option value="scan_started">scan_started</option>
+          <option value="bed_fail">bed_fail</option>
+          <option value="signal_upserted">signal_upserted</option>
+          <option value="phase3_open_ok">phase3_open_ok</option>
+          <option value="phase3_open_fail">phase3_open_fail</option>
+          <option value="gate_skip_scan">gate_skip_scan</option>
+        </select></label>
+        <button class="refresh-btn" onclick="loadHistory()">↻ Refresh</button>
+      </div>
+      <div id="historyContent"><div class="loader">Loading history…</div></div>
+    </main>
+  </div>
 </div>
 
 <!-- Settings Modal -->
@@ -177,6 +272,17 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
       <button class="btn-save" onclick="saveSettings()">Save & Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Signal Detail Modal -->
+<div class="modal-overlay" id="detailOverlay" onclick="if(event.target===this)closeDetail()">
+  <div class="modal detail-modal">
+    <h2>Signal Detail</h2>
+    <div id="detailContent"></div>
+    <div class="modal-actions" style="margin-top: 24px;">
+      <button class="btn-cancel" onclick="closeDetail()">Close</button>
     </div>
   </div>
 </div>
@@ -240,15 +346,19 @@
     const puts  = filtered.filter(t => t.right === 'P').sort((a,b) => a.strike - b.strike);
     const provider = ticks[0]?.provider || '—';
     document.getElementById('dataBadge').textContent = `data: ${provider}`;
-    const expSelect = exps.map(e => `<option value="${e}" ${e===exp?'selected':''}>${e}</option>`).join('');
+    
+    const expButtons = exps.map(e => 
+      `<button class="exp-btn ${e===exp?'active':''}" onclick="currentExp='${e}';renderChain('${ticker}',allTicks)">${e}</button>`
+    ).join('');
+    
     document.getElementById('content').innerHTML = `
       <div class="toolbar">
         <h2>${ticker}</h2>
-        <label>Exp: <select onchange="currentExp=this.value;renderChain('${ticker}',allTicks)">${expSelect}</select></label>
         <span class="pill calls">Calls: ${calls.length}</span>
         <span class="pill puts">Puts: ${puts.length}</span>
         <button class="refresh-btn" onclick="selectTicker('${ticker}')">↻ Refresh</button>
       </div>
+      <div class="exp-list">${expButtons}</div>
       <div class="stats">
         <div class="stat-card"><div class="label">Ticks</div><div class="value">${filtered.length}</div></div>
         <div class="stat-card"><div class="label">Expirations</div><div class="value">${exps.length}</div></div>
@@ -322,6 +432,342 @@
   }
 
   loadTickers();
+
+  // ===== TAB SWITCHING =====
+  function showTab(name) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    
+    event.target.classList.add('active');
+    document.getElementById(`${name}Tab`).classList.add('active');
+    
+    if (name === 'signals') loadSignals();
+    if (name === 'history') loadHistory();
+  }
+
+  // ===== SIGNALS TAB =====
+  async function loadSignals() {
+    const content = document.getElementById('signalsContent');
+    content.innerHTML = '<div class="loader">Loading signals…</div>';
+    
+    const res = await fetch(`${API}/signals/active`).catch(() => null);
+    if (!res || !res.ok) {
+      content.innerHTML = '<div class="empty">Failed to load signals</div>';
+      return;
+    }
+    
+    const {signals} = await res.json();
+    if (!signals || signals.length === 0) {
+      content.innerHTML = '<div class="empty">No active signals. Run Phase 2 scan to generate signals.</div>';
+      return;
+    }
+    
+    const rows = signals.map(sig => {
+      const gateClass = `gate-${sig.gate_status || 'idle'}`;
+      return `
+        <tr class="clickable" onclick="showSignalDetail('${sig.symbol}', '${sig.expiration}')">
+          <td><strong>${sig.symbol}</strong></td>
+          <td>${sig.expiration}</td>
+          <td>${sig.dte}</td>
+          <td>${sig.structure_label}</td>
+          <td>${sig.break_even_days.toFixed(1)}</td>
+          <td>${sig.rank_score.toFixed(4)}</td>
+          <td><span class="badge ${gateClass}">${sig.gate_status || 'idle'}</span></td>
+          <td>${sig.remaining_profit.toFixed(2)}</td>
+          <td>${sig.remaining_percent.toFixed(1)}%</td>
+        </tr>`;
+    }).join('');
+    
+    content.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Expiration</th>
+            <th>DTE</th>
+            <th>Type</th>
+            <th>BED</th>
+            <th>Rank</th>
+            <th>Gate Status</th>
+            <th>Profit $</th>
+            <th>Profit %</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  async function showSignalDetail(symbol, expiration) {
+    const res = await fetch(`${API}/signals/active/${symbol}/${expiration}`).catch(() => null);
+    if (!res || !res.ok) {
+      showToast('Failed to load signal detail', false);
+      return;
+    }
+    
+    const {signal, gate} = await res.json();
+    if (!signal) {
+      showToast('Signal not found', false);
+      return;
+    }
+    
+    const gateStatus = gate ? gate.status : 'idle';
+    const gateClass = `gate-${gateStatus}`;
+    
+    const legsTable = signal.legs.map(leg => `
+      <tr>
+        <td>${leg.leg_index}</td>
+        <td>${leg.strike}</td>
+        <td>${leg.right}</td>
+        <td>${leg.open_action}</td>
+        <td>${leg.quantity}</td>
+        <td>${leg.bid.toFixed(2)}</td>
+        <td>${leg.ask.toFixed(2)}</td>
+        <td class="mid">${leg.mid.toFixed(2)}</td>
+        <td>${leg.volume}</td>
+        <td>${leg.open_interest}</td>
+      </tr>`).join('');
+    
+    document.getElementById('detailContent').innerHTML = `
+      <div class="detail-section">
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+          <h3 style="margin:0;">${signal.symbol} / ${signal.expiration}</h3>
+          <span style="font-size:.9rem;color:var(--muted);">${signal.structure_label}</span>
+          <span class="badge ${gateClass}">${gateStatus}</span>
+        </div>
+        <p style="font-size:.75rem;color:var(--muted);">Signal ID: ${signal.signal_id}</p>
+      </div>
+      
+      <div class="detail-section">
+        <h3>Metrics</h3>
+        <div class="detail-grid">
+          <div class="detail-metric"><div class="label">DTE</div><div class="value">${signal.dte}</div></div>
+          <div class="detail-metric"><div class="label">BED</div><div class="value">${signal.break_even_days.toFixed(1)}</div></div>
+          <div class="detail-metric"><div class="label">Rank Score</div><div class="value">${signal.rank_score.toFixed(4)}</div></div>
+          <div class="detail-metric"><div class="label">Mid Entry</div><div class="value">$${signal.mid_entry.toFixed(2)}</div></div>
+          <div class="detail-metric"><div class="label">Spread Cost</div><div class="value">$${signal.spread_cost.toFixed(2)}</div></div>
+          <div class="detail-metric"><div class="label">Net Credit</div><div class="value">$${signal.net_credit.toFixed(2)}</div></div>
+          <div class="detail-metric"><div class="label">Fees Total</div><div class="value">$${signal.fees_total.toFixed(2)}</div></div>
+          <div class="detail-metric"><div class="label">Remaining Profit</div><div class="value">$${signal.remaining_profit.toFixed(2)}</div></div>
+          <div class="detail-metric"><div class="label">Remaining %</div><div class="value">${signal.remaining_percent.toFixed(1)}%</div></div>
+        </div>
+      </div>
+      
+      <div class="detail-section">
+        <h3>Legs</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Leg</th><th>Strike</th><th>C/P</th><th>Action</th><th>Qty</th>
+              <th>Bid</th><th>Ask</th><th>Mid</th><th>Vol</th><th>OI</th>
+            </tr>
+          </thead>
+          <tbody>${legsTable}</tbody>
+        </table>
+      </div>
+      
+      <div class="detail-section">
+        <h3>Raw JSON</h3>
+        <pre>${JSON.stringify(signal, null, 2)}</pre>
+      </div>`;
+    
+    document.getElementById('detailOverlay').classList.add('open');
+  }
+
+  function closeDetail() {
+    document.getElementById('detailOverlay').classList.remove('open');
+  }
+
+  async function triggerScan() {
+    const btn = document.getElementById('scanBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Scanning…';
+    
+    const res = await fetch(`${API}/signal-scan`, {method: 'POST'}).catch(() => null);
+    if (!res || !res.ok) {
+      showToast('Scan failed to start', false);
+    } else {
+      showToast('Phase 2 scan started');
+      setTimeout(() => loadSignals(), 8000);
+    }
+    
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = '🔍 Run Phase 2 Scan';
+    }, 10000);
+  }
+
+  // ===== HISTORY TAB =====
+  async function loadHistory() {
+    const content = document.getElementById('historyContent');
+    content.innerHTML = '<div class="loader">Loading history…</div>';
+    
+    const symbol = document.getElementById('histSymbol').value;
+    const eventType = document.getElementById('histEventType').value;
+    
+    const params = new URLSearchParams({limit: 200});
+    if (symbol) params.append('symbol', symbol.toUpperCase());
+    if (eventType) params.append('event_type', eventType);
+    
+    const res = await fetch(`${API}/signals/history?${params}`).catch(() => null);
+    if (!res || !res.ok) {
+      content.innerHTML = '<div class="empty">Failed to load history</div>';
+      return;
+    }
+    
+    const {events} = await res.json();
+    if (!events || events.length === 0) {
+      content.innerHTML = '<div class="empty">No history events yet.</div>';
+      return;
+    }
+    
+    const rows = events.map((evt, idx) => {
+      const payload = evt.payload || {};
+      const hasChainSnapshot = payload.chain_snapshot && Array.isArray(payload.chain_snapshot);
+      
+      // Build payload preview (exclude chain_snapshot from preview)
+      const payloadForPreview = {...payload};
+      if (hasChainSnapshot) {
+        payloadForPreview.chain_snapshot = `[${payload.chain_snapshot.length} ticks]`;
+      }
+      const payloadPreview = JSON.stringify(payloadForPreview).slice(0, 60);
+      
+      const hasExpiration = evt.expiration && evt.expiration !== 'N/A';
+      const viewChainLink = hasExpiration 
+        ? `<a href="#" onclick="event.stopPropagation(); viewChainFromHistory('${evt.symbol}', '${evt.expiration}'); return false;" 
+             style="color:var(--accent);font-size:.75rem;text-decoration:none;">🔍 View Chain</a>`
+        : '';
+      
+      // Store event data for expanded view
+      window.historyEvents = window.historyEvents || [];
+      window.historyEvents[idx] = evt;
+      
+      return `
+        <tr class="clickable" onclick="toggleHistoryPayload(${idx})">
+          <td style="font-size:.75rem;color:var(--muted);">${evt.ts.slice(0, 19)}</td>
+          <td><strong>${evt.event_type}</strong></td>
+          <td>${evt.symbol}${evt.expiration ? ' / ' + evt.expiration : ''}</td>
+          <td style="font-size:.75rem;">${evt.signal_id || '—'}</td>
+          <td style="font-size:.75rem;color:var(--muted);">${payloadPreview}${payloadPreview.length < JSON.stringify(payloadForPreview).length ? '...' : ''}</td>
+          <td>${viewChainLink}</td>
+        </tr>
+        <tr id="payload-${idx}" style="display:none;">
+          <td colspan="6" style="padding:0;">
+            ${hasChainSnapshot ? renderChainSnapshotExpanded(idx, payload) : `<pre style="margin:12px;">${JSON.stringify(payload, null, 2)}</pre>`}
+          </td>
+        </tr>`;
+    }).join('');
+    
+    content.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Event Type</th>
+            <th>Symbol / Exp</th>
+            <th>Signal ID</th>
+            <th>Payload</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function toggleHistoryPayload(idx) {
+    const row = document.getElementById(`payload-${idx}`);
+    row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+  }
+
+  function renderChainSnapshotExpanded(idx, payload) {
+    const snapshotData = payload.chain_snapshot || {};
+    const chainTicks = snapshotData.chain || [];
+    const calculations = snapshotData.calculations || {};
+    
+    // Build metadata excluding chain_snapshot
+    const metadata = {...payload};
+    delete metadata.chain_snapshot;
+    
+    // Group chain ticks by strike
+    const strikeMap = {};
+    chainTicks.forEach(tick => {
+      if (!strikeMap[tick.strike]) {
+        strikeMap[tick.strike] = {call: null, put: null};
+      }
+      if (tick.right === 'C') strikeMap[tick.strike].call = tick;
+      else if (tick.right === 'P') strikeMap[tick.strike].put = tick;
+    });
+    
+    const strikes = Object.keys(strikeMap).map(Number).sort((a, b) => a - b);
+    
+    const chainRows = strikes.map(strike => {
+      const call = strikeMap[strike].call;
+      const put = strikeMap[strike].put;
+      return `
+        <tr>
+          <td class="bid">${call?.bid.toFixed(2) || '—'}</td>
+          <td class="ask">${call?.ask.toFixed(2) || '—'}</td>
+          <td class="mid">${call?.mid.toFixed(2) || '—'}</td>
+          <td class="vol">${call?.volume || '—'}</td>
+          <td class="oi">${call?.open_interest || '—'}</td>
+          <td class="strike"><strong>${strike.toFixed(2)}</strong></td>
+          <td class="bid">${put?.bid.toFixed(2) || '—'}</td>
+          <td class="ask">${put?.ask.toFixed(2) || '—'}</td>
+          <td class="mid">${put?.mid.toFixed(2) || '—'}</td>
+          <td class="vol">${put?.volume || '—'}</td>
+          <td class="oi">${put?.open_interest || '—'}</td>
+        </tr>`;
+    }).join('');
+    
+    return `
+      <div style="padding:12px;background:var(--hover-bg);">
+        <div style="margin-bottom:12px;">
+          <strong>Event Metadata:</strong>
+          <pre style="margin-top:6px;font-size:.85rem;">${JSON.stringify(metadata, null, 2)}</pre>
+        </div>
+        
+        ${Object.keys(calculations).length > 0 ? `
+        <div style="margin-top:16px;">
+          <strong>Signal Calculations:</strong>
+          <pre style="margin-top:6px;font-size:.85rem;">${JSON.stringify(calculations, null, 2)}</pre>
+        </div>
+        ` : ''}
+        
+        <div style="margin-top:16px;">
+          <strong>Chain Snapshot (${chainTicks.length} options):</strong>
+          <div style="overflow-x:auto;margin-top:8px;">
+            <table style="font-size:.85rem;width:100%;">
+              <thead>
+                <tr>
+                  <th colspan="5" style="background:var(--bg);text-align:center;">CALLS</th>
+                  <th style="background:var(--primary);color:white;">STRIKE</th>
+                  <th colspan="5" style="background:var(--bg);text-align:center;">PUTS</th>
+                </tr>
+                <tr>
+                  <th>Bid</th><th>Ask</th><th>Mid</th><th>Vol</th><th>OI</th>
+                  <th></th>
+                  <th>Bid</th><th>Ask</th><th>Mid</th><th>Vol</th><th>OI</th>
+                </tr>
+              </thead>
+              <tbody>${chainRows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function viewChainFromHistory(symbol, expiration) {
+    // Switch to Chains tab
+    showTab('chains');
+    
+    // Set the filters
+    document.getElementById('symbolFilter').value = symbol;
+    document.getElementById('expirationFilter').value = expiration;
+    
+    // Trigger the load
+    loadChain();
+    
+    showToast(`Loading chain for ${symbol} ${expiration}...`);
+  }
 </script>
 </body>
 </html>

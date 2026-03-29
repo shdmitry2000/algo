@@ -6,7 +6,7 @@ echo "Starting AlgoTrade System..."
 echo "========================================"
 
 # Make sure scripts are executable
-chmod +x stop_all.sh start_backend.sh start_frontend.sh
+chmod +x stop_all.sh start_backend.sh start_frontend.sh start_terminator.sh
 
 # 1. Stop everything first
 ./stop_all.sh
@@ -26,11 +26,20 @@ if [ $? -ne 0 ]; then
     echo "Aborting due to frontend failure."
     exit 1
 fi
+echo ""
+
+# 4. Start Phase 3 Terminator
+./start_terminator.sh
+echo ""
 
 echo ""
 echo "🚀 All modules started and healthy!"
-echo "   Backend:  http://localhost:5001"
-echo "   Frontend: http://localhost:8000"
+echo "   Backend:    http://localhost:5001"
+echo "   Frontend:   http://localhost:8000"
+echo "   Terminator: running (continuous mode)"
 echo "========================================"
 echo "To fetch option ticks into Redis, run:"
 echo "  ./.conda/bin/python datagathering/pipeline.py"
+echo ""
+echo "Phase 2 will auto-trigger after each symbol loads."
+echo "Terminator will auto-clear signals after 5s (simulating Phase 3)."

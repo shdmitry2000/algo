@@ -13,4 +13,8 @@ echo "Killed frontend server (if running)"
 pkill -f "datagathering/pipeline.py"
 echo "Killed datagathering/pipeline.py (if running)"
 
+# Kill terminator
+pkill -f "phase3_terminator.py"
+echo "Killed phase3_terminator.py (if running)"
+
 echo "All modules stopped."
