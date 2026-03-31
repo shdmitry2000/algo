@@ -18,24 +18,30 @@ End-to-end automated options trading system with multi-strategy support, provide
 ## Quick Start
 
 ```bash
-# 1. Setup environment
-cp .env.example .env
+# 1. Create and activate virtual environment (once)
+python3 -m venv .venv
+source .venv/bin/activate
 
-# 2. Verify system
-python verify_setup.py
-
-# 3. Install dependencies (if needed)
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# 4. Start Redis
+# 3. Setup environment
+cp .env.example .env
+
+# 4. Verify system
+python verify_setup.py
+
+# 5. Start Redis
 redis-server &
 
-# 5. Run tests
+# 6. Run tests
 python tests/run_all_tests.py
 
-# 6. Run Phase 2 scan
+# 7. Run Phase 2 scan
 python cli/run_phase2_scan.py
 ```
+
+When you are done in that shell session, run `deactivate` to exit the virtual environment.
 
 **See**: `SETUP_GUIDE.md` for detailed setup instructions
 

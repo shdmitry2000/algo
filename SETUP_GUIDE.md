@@ -10,9 +10,15 @@ Quick guide to get the algorithmic trading system running.
 # Navigate to project
 cd /Users/dmitrysh/code/algotrade/algo
 
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
 # Install dependencies
 pip install -r requirements.txt
 ```
+
+To leave the virtual environment later, run `deactivate`.
 
 ---
 
