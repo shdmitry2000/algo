@@ -1,0 +1,23 @@
+# Local development: Redis for option-chain cache and Phase 2 signals.
+# Start: docker compose up -d
+# Stop:  docker compose down
+# App defaults (see .env.example): REDIS_HOST=127.0.0.1 REDIS_PORT=6379
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: algo-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  redis-data:

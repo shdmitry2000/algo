@@ -93,6 +93,73 @@ def check_env_file():
     return True
 
 
+def check_phase2_config():
+    """Check config/settings.yaml exists and is valid YAML for Phase 2 scan."""
+    print("\nChecking Phase 2 config (config/settings.yaml)...")
+
+    example_path = project_root / "config" / "settings.example.yaml"
+    settings_path = project_root / "config" / "settings.yaml"
+
+    if not example_path.exists():
+        print("  ❌ config/settings.example.yaml not found")
+        return False
+    print("  ✅ config/settings.example.yaml exists")
+
+    if not settings_path.exists():
+        print("  ⚠️  config/settings.yaml not found")
+        print("     Run: cp config/settings.example.yaml config/settings.yaml")
+        return False
+    print("  ✅ config/settings.yaml exists")
+
+    try:
+        import yaml
+    except ImportError:
+        print("  ⚠️  PyYAML not installed; cannot validate structure (pip install pyyaml)")
+        if settings_path.stat().st_size > 0:
+            print("  ✅ config/settings.yaml exists and is non-empty")
+            return True
+        print("  ❌ config/settings.yaml is empty")
+        return False
+
+    try:
+        with open(settings_path) as f:
+            data = yaml.safe_load(f)
+    except Exception as e:
+        print(f"  ❌ Could not read config/settings.yaml: {e}")
+        return False
+
+    if data is None:
+        print("  ❌ config/settings.yaml is empty or not a mapping")
+        return False
+    if not isinstance(data, dict):
+        print("  ❌ config/settings.yaml root must be a YAML mapping")
+        return False
+
+    tickers = data.get("tickers", [])
+    if tickers is None:
+        print("  ⚠️  tickers is null; Phase 2 will use an empty list")
+    elif not isinstance(tickers, list):
+        print("  ❌ tickers must be a list")
+        return False
+    elif len(tickers) == 0:
+        print("  ⚠️  tickers is empty (Phase 2 will not scan any symbols)")
+    else:
+        print(f"  ✅ tickers: {len(tickers)} symbol(s)")
+
+    params = data.get("parameters")
+    if params is not None and not isinstance(params, dict):
+        print("  ❌ parameters must be a mapping")
+        return False
+    if params:
+        fee = params.get("fee_per_leg", "(default)")
+        spread = params.get("spread_cap_bound", "(default)")
+        print(f"  ✅ parameters: fee_per_leg={fee}, spread_cap_bound={spread}")
+    else:
+        print("  ✅ parameters: (optional; code defaults apply if omitted)")
+
+    return True
+
+
 def check_redis_connection():
     """Check Redis is running and accessible."""
     print("\nChecking Redis connection...")
@@ -119,7 +186,7 @@ def check_redis_connection():
         
     except Exception as e:
         print(f"  ❌ Redis connection failed: {e}")
-        print(f"     Run: redis-server")
+        print(f"     Run: docker compose up -d   (or: redis-server)")
         return False
 
 
@@ -233,6 +300,7 @@ def main():
         ("Python Version", check_python_version),
         ("Dependencies", check_dependencies),
         ("Environment Config", check_env_file),
+        ("Phase 2 Config", check_phase2_config),
         ("Redis Connection", check_redis_connection),
         ("Provider Availability", check_provider_availability),
         ("Test Framework", check_tests),

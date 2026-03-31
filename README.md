@@ -28,11 +28,11 @@ pip install -r requirements.txt
 # 3. Setup environment
 cp .env.example .env
 
-# 4. Verify system
-python verify_setup.py
+# 4. Start Redis (Docker; needs Docker Desktop or Docker Engine)
+docker compose up -d
 
-# 5. Start Redis
-redis-server &
+# 5. Verify system
+python verify_setup.py
 
 # 6. Run tests
 python tests/run_all_tests.py
@@ -41,7 +41,7 @@ python tests/run_all_tests.py
 python cli/run_phase2_scan.py
 ```
 
-When you are done in that shell session, run `deactivate` to exit the virtual environment.
+When you are done in that shell session, run `deactivate` to exit the virtual environment. To stop Redis, run `docker compose down` from the project root (add `-v` to remove the Redis data volume).
 
 **See**: `SETUP_GUIDE.md` for detailed setup instructions
 
@@ -247,8 +247,8 @@ python tests/providers/test_live_providers.py --all
 
 ### Development Mode
 ```bash
-# Start Redis
-redis-server
+# Start Redis (Docker Compose; default REDIS_HOST/REDIS_PORT match .env.example)
+docker compose up -d
 
 # Run single scan
 python cli/run_phase2_scan.py
@@ -460,6 +460,8 @@ python tests/providers/test_all_providers.py               # Provider tests only
 python tests/providers/test_live_providers.py --all        # Live API tests
 
 # Running
+docker compose up -d                                       # Start Redis (development)
+docker compose down                                        # Stop Redis container
 python cli/run_phase2_scan.py                              # Manual scan
 ./start_all.sh                                             # Start services
 ./stop_all.sh                                              # Stop services

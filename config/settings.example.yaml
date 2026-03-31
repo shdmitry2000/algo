@@ -1,0 +1,11 @@
+# Copy to config/settings.yaml and edit tickers for your environment.
+# Phase 2 scan reads this file (see filters/phase2strat1/README.md).
+
+tickers:
+  - SPY
+  - QQQ
+  - AAPL
+
+parameters:
+  fee_per_leg: 0.65
+  spread_cap_bound: 0.01
