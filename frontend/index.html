@@ -214,6 +214,11 @@
         <button class="scan-btn" id="scanBtn" onclick="triggerScan()">🔍 Run Phase 2 Scan</button>
         <button class="refresh-btn" onclick="loadSignals()">↻ Refresh</button>
       </div>
+      <div class="toolbar" style="margin-bottom: 14px;">
+        <label>Symbol <select id="sigFilterSymbol" onchange="renderSignalsTable()"><option value="">All</option></select></label>
+        <label>Expiration <select id="sigFilterExpiration" onchange="renderSignalsTable()"><option value="">All</option></select></label>
+        <label>Type <select id="sigFilterType" onchange="renderSignalsTable()"><option value="">All</option></select></label>
+      </div>
       <div id="signalsContent"><div class="loader">Loading signals…</div></div>
     </main>
   </div>
@@ -292,6 +297,7 @@
 <script>
   const API = 'http://localhost:5001/api';
   let currentTicker = null, currentExp = null, allTicks = [];
+  let activeSignalsRaw = [];
 
   function fmtFixed(value, decimals) {
     if (value === null || value === undefined || value === '') return '—';
@@ -460,23 +466,73 @@
   }
 
   // ===== SIGNALS TAB =====
-  async function loadSignals() {
+  function signalTypeLabel(sig) {
+    return sig.structure_label != null && sig.structure_label !== '' ? sig.structure_label : '—';
+  }
+
+  function populateSignalFilterOptions() {
+    const symSel = document.getElementById('sigFilterSymbol');
+    const expSel = document.getElementById('sigFilterExpiration');
+    const typeSel = document.getElementById('sigFilterType');
+    if (!symSel || !expSel || !typeSel) return;
+
+    const curSym = symSel.value;
+    const curExp = expSel.value;
+    const curType = typeSel.value;
+
+    const symbols = [...new Set(activeSignalsRaw.map(s => s.symbol))].sort();
+    const exps = [...new Set(activeSignalsRaw.map(s => s.expiration))].sort();
+    const types = [...new Set(activeSignalsRaw.map(s => signalTypeLabel(s)))].sort();
+
+    const fill = (sel, values) => {
+      sel.innerHTML = '';
+      const o0 = document.createElement('option');
+      o0.value = '';
+      o0.textContent = 'All';
+      sel.appendChild(o0);
+      values.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        sel.appendChild(o);
+      });
+    };
+
+    fill(symSel, symbols);
+    fill(expSel, exps);
+    fill(typeSel, types);
+
+    if (symbols.includes(curSym)) symSel.value = curSym;
+    if (exps.includes(curExp)) expSel.value = curExp;
+    if (types.includes(curType)) typeSel.value = curType;
+  }
+
+  function renderSignalsTable() {
     const content = document.getElementById('signalsContent');
-    content.innerHTML = '<div class="loader">Loading signals…</div>';
-    
-    const res = await fetch(`${API}/signals/active`).catch(() => null);
-    if (!res || !res.ok) {
-      content.innerHTML = '<div class="empty">Failed to load signals</div>';
-      return;
-    }
-    
-    const {signals} = await res.json();
-    if (!signals || signals.length === 0) {
+    const symSel = document.getElementById('sigFilterSymbol');
+    const expSel = document.getElementById('sigFilterExpiration');
+    const typeSel = document.getElementById('sigFilterType');
+
+    const fs = symSel ? symSel.value : '';
+    const fe = expSel ? expSel.value : '';
+    const ft = typeSel ? typeSel.value : '';
+
+    let filtered = activeSignalsRaw;
+    if (fs) filtered = filtered.filter(s => s.symbol === fs);
+    if (fe) filtered = filtered.filter(s => s.expiration === fe);
+    if (ft) filtered = filtered.filter(s => signalTypeLabel(s) === ft);
+
+    if (!activeSignalsRaw.length) {
       content.innerHTML = '<div class="empty">No active signals. Run Phase 2 scan to generate signals.</div>';
       return;
     }
-    
-    const rows = signals.map(sig => {
+
+    if (!filtered.length) {
+      content.innerHTML = '<div class="empty">No signals match the current filters.</div>';
+      return;
+    }
+
+    const rows = filtered.map(sig => {
       const gateClass = `gate-${sig.gate_status || 'idle'}`;
       return `
         <tr class="clickable" onclick="showSignalDetail('${sig.symbol}', '${sig.expiration}')">
@@ -491,7 +547,7 @@
           <td>${fmtPercent(sig.remaining_percent, 1)}</td>
         </tr>`;
     }).join('');
-    
+
     content.innerHTML = `
       <table>
         <thead>
@@ -509,6 +565,24 @@
         </thead>
         <tbody>${rows}</tbody>
       </table>`;
+  }
+
+  async function loadSignals() {
+    const content = document.getElementById('signalsContent');
+    content.innerHTML = '<div class="loader">Loading signals…</div>';
+
+    const res = await fetch(`${API}/signals/active`).catch(() => null);
+    if (!res || !res.ok) {
+      activeSignalsRaw = [];
+      populateSignalFilterOptions();
+      content.innerHTML = '<div class="empty">Failed to load signals</div>';
+      return;
+    }
+
+    const data = await res.json();
+    activeSignalsRaw = Array.isArray(data.signals) ? data.signals : [];
+    populateSignalFilterOptions();
+    renderSignalsTable();
   }
 
   async function showSignalDetail(symbol, expiration) {
