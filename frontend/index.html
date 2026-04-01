@@ -45,6 +45,13 @@
       cursor: pointer; transition: all .15s;
     }
     .settings-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .file-import-group { display: flex; gap: 8px; align-items: center; }
+    .file-import-group select { min-width: 118px; }
+    .file-import-btn {
+      background: var(--accent2); color: #000; border: none; border-radius: 6px;
+      padding: 5px 10px; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer;
+    }
+    .file-import-btn:disabled { opacity: .45; cursor: default; }
     .layout { display: flex; height: calc(100vh - 53px); }
 
     /* CHAINS toolbar */
@@ -229,6 +236,18 @@
   </nav>
   <span class="badge data" id="dataBadge">data: —</span>
   <span class="badge config" id="configBadge">configured: —</span>
+  <div class="file-import-group" id="fileImportGroup" style="display:none;">
+    <select id="fileImportTicker" onchange="onFileImportTickerChange()">
+      <option value="">Ticker</option>
+    </select>
+    <select id="fileImportDate" onchange="onFileImportDateChange()" disabled>
+      <option value="">Date</option>
+    </select>
+    <select id="fileImportTime" onchange="onFileImportTimeChange()" disabled>
+      <option value="">Time</option>
+    </select>
+    <button type="button" class="file-import-btn" id="fileImportBtn" onclick="insertChainFile()" disabled>Insert</button>
+  </div>
   <button class="settings-btn" onclick="openSettings()">⚙ Settings</button>
 </header>
 
@@ -305,15 +324,20 @@
           <option value="yfinance">yfinance (free, no key)</option>
           <option value="tradier">tradier (Tradier.com)</option>
           <option value="theta">theta (ThetaData Pro)</option>
+          <option value="file_folder">file_folder (CSV from folder)</option>
         </select>
       </div>
-      <div class="form-row">
+      <div class="form-row" id="settingTradierTokenRow">
         <label>Tradier Access Token</label>
         <input type="password" id="settingTradierToken" placeholder="leave blank to keep existing" autocomplete="new-password" />
       </div>
-      <div class="form-row">
+      <div class="form-row" id="settingThetaUserRow">
         <label>ThetaData Username</label>
         <input type="text" id="settingThetaUser" placeholder="email@example.com" />
+      </div>
+      <div class="form-row" id="settingChainFilesDirRow" style="display:none;">
+        <label>Folder CSV Path (CHAIN_FILES_DIR)</label>
+        <input type="text" id="settingChainFilesDir" placeholder="./data/chain_files or /absolute/path" />
       </div>
       <div class="form-row">
         <label>Redis Host</label>
@@ -358,6 +382,7 @@
 <script>
   const API = 'http://localhost:5001/api';
   let currentTicker = null, currentExp = null, allTicks = [];
+  let chainFilesInventory = { tickers: [], by_ticker: {} };
   let activeSignalsRaw = [];
   /** Set when chain view is rendered; used by info modal */
   let lastChainStats = null;
@@ -456,6 +481,150 @@
     if (!res || !res.ok) return;
     const d = await res.json();
     document.getElementById('configBadge').textContent = `configured: ${d.configured_provider}`;
+    const shouldShowFileImport = d.configured_provider === 'file_folder' && Boolean(d.chain_files_dir_configured);
+    await loadChainFilesInventory(shouldShowFileImport);
+  }
+
+  function resetFileImportSelect(id, placeholder, disabled = true) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = `<option value="">${placeholder}</option>`;
+    el.value = '';
+    el.disabled = disabled;
+  }
+
+  function updateFileInsertEnabled() {
+    const ticker = document.getElementById('fileImportTicker')?.value || '';
+    const date = document.getElementById('fileImportDate')?.value || '';
+    const time = document.getElementById('fileImportTime')?.value || '';
+    const btn = document.getElementById('fileImportBtn');
+    if (btn) btn.disabled = !(ticker && date && time);
+  }
+
+  async function loadChainFilesInventory(enabled) {
+    const group = document.getElementById('fileImportGroup');
+    const prevTicker = document.getElementById('fileImportTicker')?.value || '';
+    const prevDate = document.getElementById('fileImportDate')?.value || '';
+    const prevTime = document.getElementById('fileImportTime')?.value || '';
+    if (!enabled) {
+      if (group) group.style.display = 'none';
+      return;
+    }
+    const res = await fetch(`${API}/chain-files/inventory`).catch(() => null);
+    if (!res || !res.ok) {
+      if (group) group.style.display = 'none';
+      return;
+    }
+    const data = await res.json();
+    chainFilesInventory = {
+      tickers: Array.isArray(data.tickers) ? data.tickers : [],
+      by_ticker: data.by_ticker || {},
+    };
+    if (!chainFilesInventory.tickers.length) {
+      if (group) group.style.display = 'none';
+      return;
+    }
+
+    if (group) group.style.display = 'flex';
+    const tickerSel = document.getElementById('fileImportTicker');
+    tickerSel.innerHTML = '<option value="">Ticker</option>' +
+      chainFilesInventory.tickers.map(t => `<option value="${escapeAttr(t)}">${escapeAttr(t)}</option>`).join('');
+    if (prevTicker && chainFilesInventory.tickers.includes(prevTicker)) {
+      tickerSel.value = prevTicker;
+      const dates = Object.keys(chainFilesInventory.by_ticker[prevTicker] || {});
+      const dateSel = document.getElementById('fileImportDate');
+      dateSel.innerHTML = '<option value="">Date</option>' + dates.map(d => `<option value="${escapeAttr(d)}">${escapeAttr(d)}</option>`).join('');
+      dateSel.disabled = dates.length === 0;
+      if (prevDate && dates.includes(prevDate)) {
+        dateSel.value = prevDate;
+        const times = chainFilesInventory.by_ticker[prevTicker]?.[prevDate] || [];
+        const timeSel = document.getElementById('fileImportTime');
+        timeSel.innerHTML = '<option value="">Time</option>' + times.map(t => `<option value="${escapeAttr(t)}">${escapeAttr(t)}</option>`).join('');
+        timeSel.disabled = times.length === 0;
+        if (prevTime && times.includes(prevTime)) {
+          timeSel.value = prevTime;
+        }
+      } else {
+        resetFileImportSelect('fileImportTime', 'Time', true);
+      }
+    } else {
+      resetFileImportSelect('fileImportDate', 'Date', true);
+      resetFileImportSelect('fileImportTime', 'Time', true);
+    }
+    updateFileInsertEnabled();
+  }
+
+  function onFileImportTickerChange() {
+    const ticker = document.getElementById('fileImportTicker').value;
+    const dateSel = document.getElementById('fileImportDate');
+    resetFileImportSelect('fileImportTime', 'Time', true);
+    if (!ticker || !chainFilesInventory.by_ticker[ticker]) {
+      resetFileImportSelect('fileImportDate', 'Date', true);
+      updateFileInsertEnabled();
+      return;
+    }
+    const dates = Object.keys(chainFilesInventory.by_ticker[ticker]);
+    dateSel.innerHTML = '<option value="">Date</option>' + dates.map(d => `<option value="${escapeAttr(d)}">${escapeAttr(d)}</option>`).join('');
+    dateSel.disabled = false;
+    updateFileInsertEnabled();
+  }
+
+  function onFileImportDateChange() {
+    const ticker = document.getElementById('fileImportTicker').value;
+    const date = document.getElementById('fileImportDate').value;
+    const timeSel = document.getElementById('fileImportTime');
+    if (!ticker || !date) {
+      resetFileImportSelect('fileImportTime', 'Time', true);
+      updateFileInsertEnabled();
+      return;
+    }
+    const times = chainFilesInventory.by_ticker[ticker]?.[date] || [];
+    timeSel.innerHTML = '<option value="">Time</option>' + times.map(t => `<option value="${escapeAttr(t)}">${escapeAttr(t)}</option>`).join('');
+    timeSel.disabled = times.length === 0;
+    updateFileInsertEnabled();
+  }
+
+  function onFileImportTimeChange() {
+    updateFileInsertEnabled();
+  }
+
+  async function insertChainFile() {
+    const ticker = document.getElementById('fileImportTicker').value;
+    const date = document.getElementById('fileImportDate').value;
+    const time = document.getElementById('fileImportTime').value;
+    const btn = document.getElementById('fileImportBtn');
+    if (!ticker || !date || !time || !btn) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Inserting...';
+    const res = await fetch(`${API}/chain-files/import`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ ticker, date, time }),
+    }).catch(() => null);
+
+    if (!res || !res.ok) {
+      let msg = 'Insert failed';
+      if (res) {
+        try {
+          const err = await res.json();
+          if (err?.message) msg = `Insert failed: ${err.message}`;
+        } catch (_) {}
+      }
+      showToast(msg, false);
+      btn.textContent = 'Insert';
+      updateFileInsertEnabled();
+      return;
+    }
+
+    const data = await res.json();
+    showToast(`Inserted ${data.ticks} ticks for ${ticker}`);
+    btn.textContent = 'Insert';
+    updateFileInsertEnabled();
+    await loadTickers();
+    if (currentTicker === ticker) {
+      await selectTicker(ticker);
+    }
   }
 
   async function loadTickers() {
@@ -553,8 +722,17 @@
 
   function chainTickDate(ts) {
     if (ts == null || ts === '') return '—';
-    const s = String(ts);
-    return s.length >= 10 ? s.slice(0, 10) : s;
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) {
+      const s = String(ts).replace('T', ' ');
+      return s.length >= 16 ? s.slice(0, 16) : s;
+    }
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
   }
 
   function fmtOptNum(v, decimals) {
@@ -676,8 +854,10 @@
       const d = await res.json();
       document.getElementById('settingProvider').value = d.DATA_PROVIDER || 'yfinance';
       document.getElementById('settingThetaUser').value = d.THETA_USERNAME || '';
+      document.getElementById('settingChainFilesDir').value = d.CHAIN_FILES_DIR || '';
       document.getElementById('settingRedisHost').value = d.REDIS_HOST || '127.0.0.1';
       document.getElementById('settingRedisPort').value = d.REDIS_PORT || '6379';
+      toggleChainFilesDirField();
     }
     document.getElementById('modalOverlay').classList.add('open');
   }
@@ -690,6 +870,9 @@
     if (token) payload.TRADIER_ACCESS_TOKEN = token;
     const user = document.getElementById('settingThetaUser').value;
     if (user) payload.THETA_USERNAME = user;
+    if (payload.DATA_PROVIDER === 'file_folder') {
+      payload.CHAIN_FILES_DIR = document.getElementById('settingChainFilesDir').value.trim();
+    }
     payload.REDIS_HOST = document.getElementById('settingRedisHost').value || '127.0.0.1';
     payload.REDIS_PORT = document.getElementById('settingRedisPort').value || '6379';
     const res = await fetch(`${API}/settings`, {
@@ -704,6 +887,18 @@
     }
   }
 
+  function toggleChainFilesDirField() {
+    const provider = document.getElementById('settingProvider')?.value;
+    const row = document.getElementById('settingChainFilesDirRow');
+    const tradierRow = document.getElementById('settingTradierTokenRow');
+    const thetaRow = document.getElementById('settingThetaUserRow');
+    const isFileFolder = provider === 'file_folder';
+    if (!row) return;
+    row.style.display = isFileFolder ? 'block' : 'none';
+    if (tradierRow) tradierRow.style.display = isFileFolder ? 'none' : 'block';
+    if (thetaRow) thetaRow.style.display = isFileFolder ? 'none' : 'block';
+  }
+
   document.getElementById('chainsTab').addEventListener('click', (e) => {
     if (e.target.closest('.chain-info-btn')) {
       openChainStatsModal();
@@ -716,6 +911,7 @@
   });
 
   loadTickers();
+  document.getElementById('settingProvider').addEventListener('change', toggleChainFilesDirField);
 
   // ===== TAB SWITCHING =====
   function showTab(name) {
