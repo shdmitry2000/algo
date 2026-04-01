@@ -293,6 +293,20 @@
   const API = 'http://localhost:5001/api';
   let currentTicker = null, currentExp = null, allTicks = [];
 
+  function fmtFixed(value, decimals) {
+    if (value === null || value === undefined || value === '') return '—';
+    const n = Number(value);
+    if (Number.isNaN(n)) return '—';
+    return n.toFixed(decimals);
+  }
+
+  function fmtPercent(value, decimals) {
+    if (value === null || value === undefined || value === '') return '—';
+    const n = Number(value);
+    if (Number.isNaN(n)) return '—';
+    return `${n.toFixed(decimals)}%`;
+  }
+
   function showToast(msg, ok=true) {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -468,13 +482,13 @@
         <tr class="clickable" onclick="showSignalDetail('${sig.symbol}', '${sig.expiration}')">
           <td><strong>${sig.symbol}</strong></td>
           <td>${sig.expiration}</td>
-          <td>${sig.dte}</td>
-          <td>${sig.structure_label}</td>
-          <td>${sig.break_even_days.toFixed(1)}</td>
-          <td>${sig.rank_score.toFixed(4)}</td>
+          <td>${sig.dte ?? '—'}</td>
+          <td>${sig.structure_label ?? '—'}</td>
+          <td>${fmtFixed(sig.break_even_days, 1)}</td>
+          <td>${fmtFixed(sig.rank_score, 4)}</td>
           <td><span class="badge ${gateClass}">${sig.gate_status || 'idle'}</span></td>
-          <td>${sig.remaining_profit.toFixed(2)}</td>
-          <td>${sig.remaining_percent.toFixed(1)}%</td>
+          <td>${fmtFixed(sig.remaining_profit, 2)}</td>
+          <td>${fmtPercent(sig.remaining_percent, 1)}</td>
         </tr>`;
     }).join('');
     
@@ -520,11 +534,11 @@
         <td>${leg.right}</td>
         <td>${leg.open_action}</td>
         <td>${leg.quantity}</td>
-        <td>${leg.bid.toFixed(2)}</td>
-        <td>${leg.ask.toFixed(2)}</td>
-        <td class="mid">${leg.mid.toFixed(2)}</td>
-        <td>${leg.volume}</td>
-        <td>${leg.open_interest}</td>
+        <td>${fmtFixed(leg.bid, 2)}</td>
+        <td>${fmtFixed(leg.ask, 2)}</td>
+        <td class="mid">${fmtFixed(leg.mid, 2)}</td>
+        <td>${leg.volume ?? '—'}</td>
+        <td>${leg.open_interest ?? '—'}</td>
       </tr>`).join('');
     
     document.getElementById('detailContent').innerHTML = `
@@ -540,15 +554,15 @@
       <div class="detail-section">
         <h3>Metrics</h3>
         <div class="detail-grid">
-          <div class="detail-metric"><div class="label">DTE</div><div class="value">${signal.dte}</div></div>
-          <div class="detail-metric"><div class="label">BED</div><div class="value">${signal.break_even_days.toFixed(1)}</div></div>
-          <div class="detail-metric"><div class="label">Rank Score</div><div class="value">${signal.rank_score.toFixed(4)}</div></div>
-          <div class="detail-metric"><div class="label">Mid Entry</div><div class="value">$${signal.mid_entry.toFixed(2)}</div></div>
-          <div class="detail-metric"><div class="label">Spread Cost</div><div class="value">$${signal.spread_cost.toFixed(2)}</div></div>
-          <div class="detail-metric"><div class="label">Net Credit</div><div class="value">$${signal.net_credit.toFixed(2)}</div></div>
-          <div class="detail-metric"><div class="label">Fees Total</div><div class="value">$${signal.fees_total.toFixed(2)}</div></div>
-          <div class="detail-metric"><div class="label">Remaining Profit</div><div class="value">$${signal.remaining_profit.toFixed(2)}</div></div>
-          <div class="detail-metric"><div class="label">Remaining %</div><div class="value">${signal.remaining_percent.toFixed(1)}%</div></div>
+          <div class="detail-metric"><div class="label">DTE</div><div class="value">${signal.dte ?? '—'}</div></div>
+          <div class="detail-metric"><div class="label">BED</div><div class="value">${fmtFixed(signal.break_even_days, 1)}</div></div>
+          <div class="detail-metric"><div class="label">Rank Score</div><div class="value">${fmtFixed(signal.rank_score, 4)}</div></div>
+          <div class="detail-metric"><div class="label">Mid Entry</div><div class="value">$${fmtFixed(signal.mid_entry, 2)}</div></div>
+          <div class="detail-metric"><div class="label">Spread Cost</div><div class="value">$${fmtFixed(signal.spread_cost, 2)}</div></div>
+          <div class="detail-metric"><div class="label">Net Credit</div><div class="value">$${fmtFixed(signal.net_credit, 2)}</div></div>
+          <div class="detail-metric"><div class="label">Fees Total</div><div class="value">$${fmtFixed(signal.fees_total, 2)}</div></div>
+          <div class="detail-metric"><div class="label">Remaining Profit</div><div class="value">$${fmtFixed(signal.remaining_profit, 2)}</div></div>
+          <div class="detail-metric"><div class="label">Remaining %</div><div class="value">${fmtPercent(signal.remaining_percent, 1)}</div></div>
         </div>
       </div>
       
@@ -737,15 +751,15 @@
       const put = strikeMap[strike].put;
       return `
         <tr>
-          <td class="bid">${call?.bid.toFixed(2) || '—'}</td>
-          <td class="ask">${call?.ask.toFixed(2) || '—'}</td>
-          <td class="mid">${call?.mid.toFixed(2) || '—'}</td>
-          <td class="vol">${call?.volume || '—'}</td>
-          <td class="oi">${call?.open_interest || '—'}</td>
+          <td class="bid">${fmtFixed(call?.bid, 2)}</td>
+          <td class="ask">${fmtFixed(call?.ask, 2)}</td>
+          <td class="mid">${fmtFixed(call?.mid, 2)}</td>
+          <td class="vol">${call?.volume ?? '—'}</td>
+          <td class="oi">${call?.open_interest ?? '—'}</td>
           <td class="strike"><strong>${strike.toFixed(2)}</strong></td>
-          <td class="bid">${put?.bid.toFixed(2) || '—'}</td>
-          <td class="ask">${put?.ask.toFixed(2) || '—'}</td>
-          <td class="mid">${put?.mid.toFixed(2) || '—'}</td>
+          <td class="bid">${fmtFixed(put?.bid, 2)}</td>
+          <td class="ask">${fmtFixed(put?.ask, 2)}</td>
+          <td class="mid">${fmtFixed(put?.mid, 2)}</td>
           <td class="vol">${put?.volume || '—'}</td>
           <td class="oi">${put?.open_interest || '—'}</td>
         </tr>`;

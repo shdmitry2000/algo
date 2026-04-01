@@ -10,9 +10,15 @@ Quick guide to get the algorithmic trading system running.
 # Navigate to project
 cd /Users/dmitrysh/code/algotrade/algo
 
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
 # Install dependencies
 pip install -r requirements.txt
 ```
+
+To leave the virtual environment later, run `deactivate`.
 
 ---
 
@@ -39,9 +45,28 @@ REDIS_PORT=6379
 
 That's it! No other configuration needed.
 
+### Phase 2 YAML config (`config/settings.yaml`)
+
+The Phase 2 scan (`cli/run_phase2_scan.py`) loads **`config/settings.yaml`** for:
+
+- **`tickers`** — symbols to evaluate. Each must already have option chain data in Redis from Phase 1 (`CHAIN:{symbol}:*` keys).
+- **`parameters`** — trading assumptions used by the scanner, including `fee_per_leg` and `spread_cap_bound` (see `filters/phase2strat1/README.md`).
+
+If the file is not present, copy the tracked template and edit the list:
+
+```bash
+cp config/settings.example.yaml config/settings.yaml
+```
+
+`config/settings.yaml` is listed in `.gitignore` so local ticker lists stay out of git; `config/settings.example.yaml` stays in the repo as a starting point.
+
 ---
 
 ## Step 3: Start Redis
+
+Pick **one** of the following. The app expects Redis at `REDIS_HOST` / `REDIS_PORT` (defaults: `127.0.0.1` and `6379` in `.env.example`).
+
+### Option A: Native Redis
 
 ```bash
 # Start Redis server
@@ -54,6 +79,36 @@ brew services start redis
 redis-cli ping
 # Should return: PONG
 ```
+
+### Option B: Docker (optional)
+
+Use this if you prefer not to install Redis on the host. The repo includes `docker-compose.yml`, which runs Redis 7 with persistence (AOF) on port **6379**.
+
+**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS/Windows) or Docker Engine + Compose plugin (Linux).
+
+```bash
+# From the project root
+docker compose up -d
+
+# Optional: wait until healthy, then verify
+docker compose ps
+redis-cli ping
+# Should return: PONG
+```
+
+**Stop Redis (container only; data volume is kept):**
+
+```bash
+docker compose down
+```
+
+**Remove the container and the Redis data volume:**
+
+```bash
+docker compose down -v
+```
+
+If something else already uses **6379**, either stop that service or change the published port in `docker-compose.yml` (e.g. `6380:6379`) and set `REDIS_PORT=6380` in `.env`.
 
 ---
 
@@ -70,6 +125,8 @@ python tests/run_all_tests.py
 ---
 
 ## Step 5: Run Phase 2 Scan
+
+Ensure **`config/settings.yaml`** exists and lists tickers that have chain data in Redis (see **Phase 2 YAML config** under Step 2).
 
 ```bash
 # Run a single scan
@@ -261,11 +318,15 @@ python tests/run_all_tests.py
 ```bash
 # Error: "Connection refused" or "Redis not available"
 
-# Fix: Start Redis
-redis-server
+# Fix: Start Redis (pick one)
 
+# Native
+redis-server
 # Or on macOS with Homebrew:
 brew services start redis
+
+# Or Docker (from project root)
+docker compose up -d
 ```
 
 ### Provider Import Error
@@ -300,6 +361,15 @@ cat .env | grep THETA
 # Fix 3: Check ThetaData subscription status
 ```
 
+### Phase 2: `config/settings.yaml` missing
+```bash
+# Error: FileNotFoundError: ... config/settings.yaml
+
+# Fix: create from template
+cp config/settings.example.yaml config/settings.yaml
+# Edit tickers to match symbols that have CHAIN data in Redis
+```
+
 ### No Signals Generated
 ```bash
 # Issue: Pipeline runs but no signals created
@@ -321,8 +391,9 @@ redis-cli KEYS signal:*
 ### 1. Initial Setup (Once)
 ```bash
 cp .env.example .env
+cp config/settings.example.yaml config/settings.yaml   # Phase 2 tickers / parameters
 pip install -r requirements.txt
-redis-server &
+docker compose up -d        # Redis via Docker; or: redis-server &
 ```
 
 ### 2. Development Cycle
@@ -358,9 +429,10 @@ echo $?  # Should be 0
 # Install Python 3.9+
 python3 --version
 
-# Install Redis
+# Install Redis (native), or use Docker Compose from the repo instead
 sudo apt install redis-server  # Ubuntu/Debian
 brew install redis             # macOS
+# Alternative: after clone, run `docker compose up -d` from project root
 
 # Clone repository
 git clone <repo_url>
@@ -372,6 +444,10 @@ cd algo
 # Copy and edit .env
 cp .env.example .env
 nano .env
+
+# Phase 2: ticker list and scan parameters
+cp config/settings.example.yaml config/settings.yaml
+nano config/settings.yaml
 
 # Set production provider
 # DATA_PROVIDER=theta
@@ -464,8 +540,9 @@ IBKR_CLIENT_ID=1
 ```bash
 # Setup
 cp .env.example .env                              # Configure environment
+cp config/settings.example.yaml config/settings.yaml   # Phase 2 config (if missing)
 pip install -r requirements.txt                   # Install dependencies
-redis-server &                                    # Start Redis
+docker compose up -d                              # Start Redis (Docker; or: redis-server &)
 
 # Testing
 python tests/run_all_tests.py                     # All tests (83)
@@ -521,7 +598,8 @@ tail -f *.log                                     # View logs
 After setup, verify:
 
 - [ ] `.env` file created from `.env.example`
-- [ ] Redis running (`redis-cli ping` returns `PONG`)
+- [ ] `config/settings.yaml` present for Phase 2 (copy from `config/settings.example.yaml` if needed)
+- [ ] Redis running (`redis-cli ping` returns `PONG`; native or Docker)
 - [ ] Dependencies installed (`pip list`)
 - [ ] Tests passing (`python tests/run_all_tests.py`)
 - [ ] Provider configured (check `DATA_PROVIDER` in `.env`)
@@ -532,6 +610,6 @@ When all checked: ✅ System ready!
 
 ---
 
-**Last Updated**: 2026-03-29  
+**Last Updated**: 2026-03-31  
 **Version**: Phase 1 & 2 Complete  
 **Status**: ✅ Production Ready

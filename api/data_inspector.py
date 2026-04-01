@@ -32,7 +32,21 @@ from storage.signal_cache import (
 )
 
 app = Flask(__name__)
-CORS(app)  # Allow all origins — frontend runs on a different port
+# Include API routes on errors so browsers still see Access-Control-Allow-Origin
+# (Flask skips after_request when an unhandled exception is turned into a 500 page.)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+
+def _project_root() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def _python_for_subprocess() -> str:
+    root = _project_root()
+    conda_py = os.path.join(root, ".conda", "bin", "python")
+    if os.path.isfile(conda_py):
+        return conda_py
+    return sys.executable
 
 
 @app.route("/api/health")
@@ -57,11 +71,15 @@ def status():
 def run_pipeline():
     """Triggers the data gathering pipeline in the background."""
     import subprocess
-    conda_py = os.path.join(os.path.dirname(__file__), "..", ".conda", "bin", "python")
-    subprocess.Popen([conda_py, "datagathering/pipeline.py"],
-                     cwd=os.path.join(os.path.dirname(__file__), ".."))
+
+    root = _project_root()
+    py = _python_for_subprocess()
+    try:
+        subprocess.Popen([py, "datagathering/pipeline.py"], cwd=root)
+    except OSError as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
     from dotenv import dotenv_values
-    env = dotenv_values(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    env = dotenv_values(os.path.join(root, ".env"))
     return jsonify({"status": "started", "provider": env.get("DATA_PROVIDER", "yfinance")})
 
 

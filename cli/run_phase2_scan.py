@@ -25,12 +25,20 @@ def main():
     
     result = run_scan()
     
+    precheck = result.get("precheck_report") or {}
+    precheck_ok = sum(1 for v in precheck.values() if v == "pass")
+    precheck_n = len(precheck)
+    
     print("\n" + "=" * 60)
     print("PHASE 2 SCAN COMPLETE")
     print("=" * 60)
     print(f"Run ID:              {result['run_id']}")
+    if precheck_n:
+        print(f"Precheck (has chain): {precheck_ok}/{precheck_n} tickers")
     print(f"Pairs scanned:       {result['scanned_pairs']}")
     print(f"Pairs skipped (gate):{result['skipped_gate']}")
+    print(f"Pairs skipped (chain unchanged vs last scan): {result['skipped_fresh']}")
+    print(f"Pairs skipped (signal already matches chain): {result['skipped_unchanged']}")
     print(f"Candidates found:    {result['candidates_total']}")
     print(f"Passed BED filter:   {result['passed_bed']}")
     print(f"Signals upserted:    {result['signals_upserted']}")

@@ -26,8 +26,8 @@ venv/
 #encrypted private key
 eth-wallet.keystore
 
-#configuration
-config/
+#configuration (tracked template: config/settings.example.yaml)
+config/settings.yaml
 
 #environment variables
 .env

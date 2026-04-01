@@ -236,7 +236,8 @@ def run_scan(run_id: Optional[str] = None) -> Dict[str, Any]:
     Main Phase 2 scan orchestrator (Multi-strategy version).
     Scans ALL strategies: IC, BF, Shifted IC, Shifted BF.
     
-    Returns summary dict: {run_id, scanned, skipped_gate, signals_upserted, ...}
+    Returns summary dict including run_id, scanned_pairs, skipped_gate, candidates_total,
+    passed_bed, signals_upserted, etc.
     """
     if not run_id:
         run_id = str(uuid.uuid4())
@@ -260,6 +261,8 @@ def run_scan(run_id: Optional[str] = None) -> Dict[str, Any]:
     skipped_fresh = 0
     skipped_unchanged = 0
     signals_upserted = 0
+    candidates_total = 0
+    passed_bed = 0
     
     # Initialize strategy scanners
     ic_scanner = IronCondorStrategy()
@@ -382,6 +385,8 @@ def run_scan(run_id: Optional[str] = None) -> Dict[str, Any]:
                 apply_bed_filter_to_candidates(candidates, dte)
                 
                 passing_count = sum(1 for c in candidates if c.bed_filter_pass)
+                candidates_total += len(candidates)
+                passed_bed += passing_count
                 logger.info(
                     f"[scan] {symbol} {expiration} {strategy_type}: "
                     f"{passing_count}/{len(candidates)} passed BED"
@@ -478,6 +483,8 @@ def run_scan(run_id: Optional[str] = None) -> Dict[str, Any]:
         "skipped_gate": skipped_gate,
         "skipped_fresh": skipped_fresh,
         "skipped_unchanged": skipped_unchanged,
+        "candidates_total": candidates_total,
+        "passed_bed": passed_bed,
         "signals_upserted": signals_upserted
     }
     save_run_metadata(run_id, run_meta)
@@ -497,7 +504,8 @@ def run_scan_for_symbol(symbol: str, run_id: Optional[str] = None) -> Dict[str, 
     Run Phase 2 multi-strategy scan for a single symbol (all its expirations).
     Auto-triggered by Phase 1 pipeline after data load.
     
-    Returns summary dict: {run_id, scanned, skipped_gate, signals_upserted, ...}
+    Returns summary dict including run_id, scanned_pairs, skipped_gate, candidates_total,
+    passed_bed, signals_upserted, etc.
     """
     if not run_id:
         run_id = str(uuid.uuid4())
@@ -517,6 +525,8 @@ def run_scan_for_symbol(symbol: str, run_id: Optional[str] = None) -> Dict[str, 
     skipped_fresh = 0
     skipped_unchanged = 0
     signals_upserted = 0
+    candidates_total = 0
+    passed_bed = 0
     
     # Initialize strategy scanners
     ic_scanner = IronCondorStrategy()
@@ -626,6 +636,8 @@ def run_scan_for_symbol(symbol: str, run_id: Optional[str] = None) -> Dict[str, 
         for strategy_type, candidates in all_strategy_candidates.items():
             apply_bed_filter_to_candidates(candidates, dte)
             passing_count = sum(1 for c in candidates if c.bed_filter_pass)
+            candidates_total += len(candidates)
+            passed_bed += passing_count
             logger.info(f"[scan] {symbol} {expiration} {strategy_type}: {passing_count}/{len(candidates)} passed BED")
         
         # Select best per strategy
@@ -707,6 +719,8 @@ def run_scan_for_symbol(symbol: str, run_id: Optional[str] = None) -> Dict[str, 
         "skipped_gate": skipped_gate,
         "skipped_fresh": skipped_fresh,
         "skipped_unchanged": skipped_unchanged,
+        "candidates_total": candidates_total,
+        "passed_bed": passed_bed,
         "signals_upserted": signals_upserted
     }
     save_run_metadata(run_id, run_meta)
