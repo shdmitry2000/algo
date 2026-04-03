@@ -1,5 +1,10 @@
 config.py.tmp
 
+# Standalone Git repos pushed as submodules of algo_trading (see scripts/setup_algo_trading_submodules.sh)
+/open_trade/
+/close_trade/
+/option_x/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
