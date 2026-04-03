@@ -12,14 +12,22 @@ Endpoints:
   POST /api/signal-scan         — trigger Phase 2 scan
   POST /api/signals/phase3-outcome — record Phase 3 open success/failure
 """
-from flask import Flask, jsonify, request
-from flask_cors import CORS
 import os
 import sys
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from dotenv import dotenv_values
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from storage.cache_manager import get_chain
+from datagathering.providers.file_folder_provider import (
+    filename_updated_at_iso,
+    load_ticks_from_csv,
+    resolve_chain_files_dir,
+    resolve_inventory_file,
+    scan_inventory,
+)
+from storage.cache_manager import get_chain, push_chain
 from storage.signal_cache import (
     list_active_signals,
     get_active_signal,
@@ -49,6 +57,42 @@ def _python_for_subprocess() -> str:
     return sys.executable
 
 
+def _chain_files_dir_and_error():
+    env = dotenv_values(os.path.join(_project_root(), ".env"))
+    config_value = env.get("CHAIN_FILES_DIR", "")
+    if not config_value:
+        return None, "CHAIN_FILES_DIR is not configured"
+    try:
+        base_dir = resolve_chain_files_dir(config_value, _project_root())
+    except Exception as e:
+        return None, str(e)
+    if not base_dir.exists() or not base_dir.is_dir():
+        return None, f"CHAIN_FILES_DIR does not exist or is not a directory: {base_dir}"
+    return base_dir, None
+
+
+def _run_scan_symbol_bg(symbol: str) -> None:
+    import logging
+    import sys as _sys
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        stream=_sys.stdout,
+    )
+    logger = logging.getLogger(__name__)
+    try:
+        from filters.phase2strat1.scan import run_scan_for_symbol
+
+        logger.info(f"[api] Background: Triggering Phase 2 scan for {symbol}...")
+        result = run_scan_for_symbol(symbol)
+        logger.info(
+            f"[api] Background: Phase 2 scan complete for {symbol}: {result.get('signals_upserted', 0)} signals"
+        )
+    except Exception as e:
+        logger.error(f"[api] Background: Phase 2 scan failed for {symbol}: {e}")
+
+
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "message": "Backend API is running"})
@@ -57,13 +101,14 @@ def health():
 @app.route("/api/status")
 def status():
     """Returns currently configured provider from .env — independent of cached data."""
-    from dotenv import dotenv_values
-    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-    env = dotenv_values(env_path)
+    env = dotenv_values(os.path.join(_project_root(), ".env"))
+    _, chain_files_error = _chain_files_dir_and_error()
     return jsonify({
         "configured_provider": env.get("DATA_PROVIDER", "yfinance"),
         "redis_host": env.get("REDIS_HOST", "127.0.0.1"),
         "redis_port": env.get("REDIS_PORT", "6379"),
+        "chain_files_dir_configured": chain_files_error is None,
+        "chain_files_error": chain_files_error,
     })
 
 
@@ -78,20 +123,18 @@ def run_pipeline():
         subprocess.Popen([py, "datagathering/pipeline.py"], cwd=root)
     except OSError as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-    from dotenv import dotenv_values
     env = dotenv_values(os.path.join(root, ".env"))
     return jsonify({"status": "started", "provider": env.get("DATA_PROVIDER", "yfinance")})
 
 
 @app.route("/api/settings", methods=["GET"])
 def get_settings():
-    from dotenv import dotenv_values
-    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-    env = dotenv_values(env_path)
+    env = dotenv_values(os.path.join(_project_root(), ".env"))
     return jsonify({
         "DATA_PROVIDER": env.get("DATA_PROVIDER", "yfinance"),
         "TRADIER_ACCESS_TOKEN": "***" if env.get("TRADIER_ACCESS_TOKEN") else "",
         "THETA_USERNAME": env.get("THETA_USERNAME", ""),
+        "CHAIN_FILES_DIR": env.get("CHAIN_FILES_DIR", ""),
         "REDIS_HOST": env.get("REDIS_HOST", "127.0.0.1"),
         "REDIS_PORT": env.get("REDIS_PORT", "6379"),
     })
@@ -153,6 +196,62 @@ def chain_exp(ticker, expiration):
     ticks = get_chain(ticker.upper(), expiration)
     return jsonify({"ticker": ticker.upper(), "expiration": expiration,
                     "count": len(ticks), "ticks": [t.to_dict() for t in ticks]})
+
+
+@app.route("/api/chain-files/inventory")
+def chain_files_inventory():
+    base_dir, err = _chain_files_dir_and_error()
+    if err:
+        return jsonify({"tickers": [], "by_ticker": {}, "message": err})
+    by_ticker = scan_inventory(base_dir)
+    return jsonify({
+        "tickers": sorted(by_ticker.keys()),
+        "by_ticker": by_ticker,
+        "base_dir": str(base_dir),
+    })
+
+
+@app.route("/api/chain-files/import", methods=["POST"])
+def chain_files_import():
+    data = request.get_json() or {}
+    ticker = str(data.get("ticker", "")).strip().upper()
+    date_str = str(data.get("date", "")).strip()
+    time_str = str(data.get("time", "")).strip()
+
+    if not all([ticker, date_str, time_str]):
+        return jsonify({"status": "error", "message": "ticker, date, and time are required"}), 400
+
+    base_dir, err = _chain_files_dir_and_error()
+    if err:
+        return jsonify({"status": "error", "message": err}), 400
+
+    try:
+        csv_path = resolve_inventory_file(base_dir, ticker, date_str, time_str)
+        ticks = load_ticks_from_csv(csv_path, provider_name="file_folder")
+        updated_at = filename_updated_at_iso(date_str, time_str)
+        count = push_chain(ticks, updated_at=updated_at)
+    except FileNotFoundError as e:
+        return jsonify({"status": "error", "message": str(e)}), 404
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    try:
+        import multiprocessing
+
+        p = multiprocessing.Process(target=_run_scan_symbol_bg, args=(ticker,))
+        p.start()
+    except Exception:
+        pass
+
+    return jsonify({
+        "status": "ok",
+        "ticker": ticker,
+        "ticks": count,
+        "updated_at": updated_at,
+        "file": str(csv_path),
+    })
 
 
 # ===== PHASE 2 SIGNAL ENDPOINTS =====

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="AlgoTrade">
+  <defs>
+    <linearGradient id="bolt" x1="8" y1="4" x2="22" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#79c0ff"/>
+      <stop offset="100%" stop-color="#58a6ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="#0d1117"/>
+  <path fill="url(#bolt)" d="M18.2 3L8.5 17.2h5.1l-2.4 11.8L23.5 14h-5.3L21.8 3z"/>
+  <circle cx="25" cy="7" r="2.2" fill="#3fb950" opacity="0.95"/>
+</svg>

@@ -15,8 +15,9 @@ the spread matrix and apply the anomaly filter.
 import json
 import logging
 import os
-from typing import List, Optional, Dict, Any
+from collections import defaultdict
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 import redis
 from dotenv import load_dotenv
 from datagathering.models import StandardOptionTick
@@ -51,8 +52,8 @@ def push_tick(client: redis.Redis, tick: StandardOptionTick) -> None:
     client.hset(key, field, tick.to_json())
 
 
-def push_chain(ticks: List[StandardOptionTick]) -> int:
-    """Push a full option chain (list of ticks) into Redis. Returns count of stored ticks."""
+def push_chain(ticks: List[StandardOptionTick], updated_at: Optional[str] = None) -> int:
+    """Push option ticks into Redis and write metadata per expiration."""
     if not ticks:
         return 0
     client = get_redis_client()
@@ -64,15 +65,19 @@ def push_chain(ticks: List[StandardOptionTick]) -> int:
         field = f"{tick.strike}:{tick.right}"
         pipe.hset(key, field, tick.to_json())
     
-    # Store metadata for freshness tracking
-    from datetime import datetime
-    meta_key = f"CHAIN:META:{ticks[0].root}:{ticks[0].expiration}"
-    meta = {
-        "updated_at": datetime.utcnow().isoformat(),
-        "tick_count": len(ticks),
-        "provider": ticks[0].provider
-    }
-    pipe.set(meta_key, json.dumps(meta))
+    updated_ts = updated_at or datetime.utcnow().isoformat()
+    grouped: Dict[tuple[str, str], List[StandardOptionTick]] = defaultdict(list)
+    for tick in ticks:
+        grouped[(tick.root, tick.expiration)].append(tick)
+
+    for (root, expiration), group_ticks in grouped.items():
+        meta_key = f"CHAIN:META:{root}:{expiration}"
+        meta = {
+            "updated_at": updated_ts,
+            "tick_count": len(group_ticks),
+            "provider": group_ticks[0].provider,
+        }
+        pipe.set(meta_key, json.dumps(meta))
     
     pipe.execute()
     logger.info(f"Pushed {len(ticks)} ticks to Redis for {ticks[0].root}")
