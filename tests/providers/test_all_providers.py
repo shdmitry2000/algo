@@ -39,6 +39,13 @@ except ImportError as e:
     providers_available['theta'] = None
 
 try:
+    from datagathering.providers.alpaca_provider import AlpacaProvider
+    providers_available['alpaca'] = AlpacaProvider
+except ImportError as e:
+    print(f"⚠️  Alpaca provider not available: {e}")
+    providers_available['alpaca'] = None
+
+try:
     from datagathering.providers.schwab_provider import SchwabProvider
     providers_available['schwab'] = SchwabProvider
 except ImportError as e:
@@ -114,6 +121,8 @@ def test_provider_base_interface():
         providers.append(providers_available['tradier'](sandbox=True))
     if providers_available['theta']:
         providers.append(providers_available['theta']())
+    if providers_available['alpaca']:
+        providers.append(providers_available['alpaca']())
     if providers_available['schwab']:
         providers.append(providers_available['schwab']())
     
@@ -248,6 +257,52 @@ def test_tradier_provider_stub():
     print("\n✓ Tradier provider structure validated")
     print("⚠️  STUB: Live API testing requires credentials")
     print("✅ PASSED: Tradier structure correct\n")
+    return True
+
+
+# ============================================================================
+# ALPACA PROVIDER TESTS (STUB)
+# ============================================================================
+
+def test_alpaca_provider_stub():
+    """Test Alpaca provider structure (stub - no live API)."""
+    print("\n" + "="*80)
+    print("TEST: Alpaca Provider Structure (STUB)")
+    print("="*80)
+
+    if not providers_available['alpaca']:
+        print("⚠️  Alpaca provider not available - SKIPPED")
+        return True
+
+    provider = providers_available['alpaca']()
+
+    print("Provider details:")
+    print(f"  Name: {provider.name}")
+    print(f"  Class: {provider.__class__.__name__}")
+    print(f"  Has fetch_chain: {hasattr(provider, 'fetch_chain')}")
+
+    print("\nNote: Alpaca requires APCA_API_KEY_ID and APCA_API_SECRET_KEY in .env")
+    print("      This test uses mock data instead of live API")
+
+    mock_ticks = create_mock_option_chain("AAPL", provider.name, num_strikes=6)
+
+    print(f"\nMock data structure (simulating Alpaca response):")
+    print(f"  Total ticks: {len(mock_ticks)}")
+    print(f"  Calls: {len([t for t in mock_ticks if t.right == 'C'])}")
+    print(f"  Puts: {len([t for t in mock_ticks if t.right == 'P'])}")
+    print(f"  Provider: {mock_ticks[0].provider}")
+
+    sample = mock_ticks[0]
+    print(f"\nSample tick:")
+    print(f"  {sample.root} {sample.expiration} {sample.strike}{sample.right}")
+    print(f"  Bid: ${sample.bid}, Ask: ${sample.ask}, Mid: ${sample.mid}")
+    print(f"  Volume: {sample.volume}, OI: {sample.open_interest}")
+
+    assert sample.provider == "alpaca", "Provider name should be 'alpaca'"
+    assert sample.mid == (sample.bid + sample.ask) / 2, "Mid should be average"
+
+    print("\n✓ Alpaca provider structure correct")
+    print("✅ PASSED: Alpaca provider validated\n")
     return True
 
 
@@ -468,6 +523,7 @@ def test_provider_output_standardization():
         ("yfinance", create_mock_option_chain("SPY", "yfinance")),
         ("tradier", create_mock_option_chain("SPY", "tradier")),
         ("theta", create_mock_option_chain("SPX", "theta")),
+        ("alpaca", create_mock_option_chain("AAPL", "alpaca")),
     ]
     
     print("All providers must return StandardOptionTick:")
@@ -512,6 +568,7 @@ def test_provider_data_compatibility():
         ("yfinance", create_mock_option_chain("SPY", "yfinance", num_strikes=6)),
         ("tradier", create_mock_option_chain("RUT", "tradier", num_strikes=6)),
         ("theta", create_mock_option_chain("SPX", "theta", num_strikes=6)),
+        ("alpaca", create_mock_option_chain("AAPL", "alpaca", num_strikes=6)),
     ]
     
     print("Testing each provider's data with Phase 2 pipeline:")
@@ -565,6 +622,7 @@ def test_provider_switching():
         ("yfinance", "Free, no credentials", "✅ Working"),
         ("tradier", "Requires TRADIER_ACCESS_TOKEN", "✅ Working"),
         ("theta", "Requires THETA_USERNAME/PASSWORD", "✅ Working"),
+        ("alpaca", "Requires APCA_API_KEY_ID/SECRET", "✅ Working"),
         ("schwab", "Phase 3/4 only", "⚠️  Stub"),
     ]
     
@@ -579,6 +637,7 @@ def test_provider_switching():
     print("  1. Set DATA_PROVIDER=yfinance (default)")
     print("  2. Set DATA_PROVIDER=tradier (with token)")
     print("  3. Set DATA_PROVIDER=theta (with credentials)")
+    print("  4. Set DATA_PROVIDER=alpaca (with API keys)")
     print()
     print("Pipeline automatically uses selected provider")
     
@@ -653,20 +712,21 @@ def test_provider_feature_matrix():
     print()
     
     features = {
-        "Provider": ["yfinance", "tradier", "theta", "schwab"],
-        "Cost": ["Free", "Free", "Paid", "N/A"],
-        "Credentials": ["No", "Yes (token)", "Yes (user/pass)", "Yes (OAuth)"],
-        "Data Quality": ["Good", "Excellent", "Excellent", "N/A"],
-        "Real-time": ["~15min delay", "Real-time", "Real-time", "N/A"],
-        "Phase 1 (Data)": ["✅", "✅", "✅", "⚠️ Stub"],
-        "Phase 3 (Orders)": ["❌", "❌", "❌", "✅"],
-        "Test Status": ["✅ Tested", "✅ Stub", "✅ Stub", "✅ Stub"],
+        "Provider": ["yfinance", "tradier", "theta", "alpaca", "schwab"],
+        "Cost": ["Free", "Free", "Paid", "Paid/Plan-based", "N/A"],
+        "Credentials": ["No", "Yes (token)", "Yes (user/pass)", "Yes (key/secret)", "Yes (OAuth)"],
+        "Data Quality": ["Good", "Excellent", "Excellent", "Excellent", "N/A"],
+        "Real-time": ["~15min delay", "Real-time", "Real-time", "Real-time", "N/A"],
+        "Phase 1 (Data)": ["✅", "✅", "✅", "✅", "⚠️ Stub"],
+        "Phase 3 (Orders)": ["❌", "❌", "❌", "✅", "✅"],
+        "Test Status": ["✅ Tested", "✅ Stub", "✅ Stub", "✅ Stub", "✅ Stub"],
     }
     
     # Print header
+    column_width = 16
     header = f"{'Feature':<20}"
     for provider in features["Provider"]:
-        header += f"{provider:>12}"
+        header += f"{provider:>{column_width}}"
     print(header)
     print("-" * 80)
     
@@ -676,15 +736,15 @@ def test_provider_feature_matrix():
             continue
         row = f"{feature_name:<20}"
         for value in features[feature_name]:
-            row += f"{value:>12}"
+            row += f"{value:>{column_width}}"
         print(row)
     
     print()
     print("Recommendations:")
     print("  • Development: yfinance (free, no setup)")
     print("  • Testing: tradier sandbox (realistic, free)")
-    print("  • Production Phase 1: theta or tradier (real-time)")
-    print("  • Production Phase 3: schwab (order execution)")
+    print("  • Production Phase 1: alpaca, theta, or tradier (real-time)")
+    print("  • Production Phase 3: alpaca or schwab (order execution)")
     
     print("\n✓ Provider features documented")
     print("✅ PASSED: Feature matrix defined\n")

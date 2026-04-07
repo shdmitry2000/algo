@@ -3,7 +3,7 @@ Phase 1 Pipeline Runner — fetches option chains from the configured provider
 and pushes them into the Redis cache for Phase 2 consumption.
 
 Run with: python datagathering/pipeline.py
-Control the provider via DATA_PROVIDER in .env (yfinance|tradier|theta)
+Control the provider via DATA_PROVIDER in .env (yfinance|tradier|theta|alpaca)
 """
 import os
 import logging
@@ -35,13 +35,16 @@ def get_provider():
     elif provider_name == "theta":
         from datagathering.providers.theta_provider import ThetaProvider
         return ThetaProvider()
+    elif provider_name == "alpaca":
+        from datagathering.providers.alpaca_provider import AlpacaProvider
+        return AlpacaProvider()
     elif provider_name == "file_folder":
         from datagathering.providers.file_folder_provider import FileFolderProvider, resolve_chain_files_dir
 
         chain_dir = resolve_chain_files_dir(os.getenv("CHAIN_FILES_DIR", ""), os.path.join(os.path.dirname(__file__), ".."))
         return FileFolderProvider(chain_dir)
     else:
-        raise ValueError(f"Unknown provider: {provider_name}. Use yfinance|tradier|theta|file_folder")
+        raise ValueError(f"Unknown provider: {provider_name}. Use yfinance|tradier|theta|alpaca|file_folder")
 
 
 def run():
