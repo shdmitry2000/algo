@@ -1,6 +1,7 @@
 import pandas as pd
 
 from tda.tddataprovider import tdclientOptionshelper
+from filters.phase2strat1.spread_math import apply_spread_cap
 
 
 class StrategyEstimatorZerroloss_TD(tdclientOptionshelper):
@@ -51,28 +52,28 @@ class StrategyEstimatorZerroloss_TD(tdclientOptionshelper):
 
     def getStrategyCalculate(self,row,shift):
 
-
         call_sum_price = row.callmark1-row.callmark2
-
         put_sum_price= +row.putmark2-row.putmark1
         dif_strike_price=row.strikePrice2-row.strikePrice1
         day_to_experation= row['daysToExpiration1']
 
-
         sum_of_strategy=call_sum_price + put_sum_price
         cost_of_margine = (1 * day_to_experation / 365 )*12/100
 
-        if sum_of_strategy == 0 :
-            total_profit_loss =0
-            persantage_of_strategy = 0
-        else:
-            total_profit_loss = dif_strike_price - sum_of_strategy - super().getFee() / 100 - cost_of_margine
-            persantage_of_strategy = total_profit_loss/sum_of_strategy
+        # CASE 1: Non-tradable strategy (no volume)
+        if sum_of_strategy == 0:
+            # Return NaN for invalid metrics - will be filtered by handler
+            return pd.Series([0, cost_of_margine, None, None, None])
 
-        year_interest_of_strategy=persantage_of_strategy*365/day_to_experation
+        # CASE 2: Tradable strategy - apply CAP algorithm
+        sum_of_strategy_capped = apply_spread_cap(sum_of_strategy, dif_strike_price, bound=0.01)
 
+        # Calculate with capped values
+        total_profit_loss = dif_strike_price - sum_of_strategy_capped - super().getFee() / 100 - cost_of_margine
+        persantage_of_strategy = total_profit_loss / sum_of_strategy_capped
+        year_interest_of_strategy = persantage_of_strategy * 365 / day_to_experation
 
-        return pd.Series([sum_of_strategy,cost_of_margine,total_profit_loss,persantage_of_strategy,year_interest_of_strategy])
+        return pd.Series([sum_of_strategy_capped, cost_of_margine, total_profit_loss, persantage_of_strategy, year_interest_of_strategy])
 
 
 
