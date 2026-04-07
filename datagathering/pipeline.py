@@ -38,8 +38,13 @@ def get_provider():
     elif provider_name == "alpaca":
         from datagathering.providers.alpaca_provider import AlpacaProvider
         return AlpacaProvider()
+    elif provider_name == "file_folder":
+        from datagathering.providers.file_folder_provider import FileFolderProvider, resolve_chain_files_dir
+
+        chain_dir = resolve_chain_files_dir(os.getenv("CHAIN_FILES_DIR", ""), os.path.join(os.path.dirname(__file__), ".."))
+        return FileFolderProvider(chain_dir)
     else:
-        raise ValueError(f"Unknown provider: {provider_name}. Use yfinance|tradier|theta|alpaca")
+        raise ValueError(f"Unknown provider: {provider_name}. Use yfinance|tradier|theta|alpaca|file_folder")
 
 
 def run():

@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AlgoTrade — Dashboard</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -12,6 +13,9 @@
       --bg: #0d1117; --surface: #161b22; --border: #30363d;
       --accent: #58a6ff; --accent2: #3fb950; --warn: #f78166;
       --text: #e6edf3; --muted: #8b949e;
+      --chain-text: #f0f3f6;
+      --chain-header: #c9d1d9;
+      --chain-muted: #b6bec8;
     }
     body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; }
     header {
@@ -41,29 +45,42 @@
       cursor: pointer; transition: all .15s;
     }
     .settings-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .file-import-group { display: flex; gap: 8px; align-items: center; }
+    .file-import-group select { min-width: 118px; }
+    .file-import-btn {
+      background: var(--accent2); color: #000; border: none; border-radius: 6px;
+      padding: 5px 10px; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer;
+    }
+    .file-import-btn:disabled { opacity: .45; cursor: default; }
     .layout { display: flex; height: calc(100vh - 53px); }
 
-    /* SIDEBAR */
-    .sidebar {
-      width: 210px; border-right: 1px solid var(--border);
-      background: var(--surface); padding: 14px 0; overflow-y: auto; flex-shrink: 0;
-    }
-    .sidebar h3 { font-size: .68rem; font-weight: 600; color: var(--muted);
-      text-transform: uppercase; letter-spacing: .08em; padding: 0 14px 8px; }
-    .ticker-btn {
-      display: block; width: 100%; text-align: left; padding: 7px 14px;
-      background: none; border: none; color: var(--text); font: inherit;
-      font-size: .88rem; cursor: pointer; transition: background .12s;
-    }
-    .ticker-btn:hover, .ticker-btn.active { background: #21262d; color: var(--accent); }
-    .sidebar-run {
-      margin: 12px 14px 4px; width: calc(100% - 28px);
+    /* CHAINS toolbar */
+    .run-pipeline-btn {
       background: var(--accent); color: #000; border: none; border-radius: 6px;
-      padding: 7px; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer;
+      padding: 7px 14px; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer;
       transition: opacity .15s;
     }
-    .sidebar-run:hover { opacity: .85; }
-    .sidebar-run:disabled { opacity: .4; cursor: default; }
+    .run-pipeline-btn:hover { opacity: .85; }
+    .run-pipeline-btn:disabled { opacity: .4; cursor: default; }
+    #chainTickerSelect { min-width: 160px; font-weight: 500; }
+    #chainExpSelect { min-width: 140px; font-weight: 500; }
+    #chainsToolbar .chains-toolbar-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    #chainsToolbar .chains-toolbar-right .refresh-btn { margin-left: 0; }
+    .chain-info-btn {
+      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
+      border-radius: 50%; width: 28px; height: 28px; padding: 0; font: inherit;
+      font-size: .8rem; font-weight: 700; cursor: pointer; line-height: 1;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: border-color .15s, color .15s;
+      flex-shrink: 0;
+    }
+    .chain-info-btn:hover { border-color: var(--accent); color: var(--accent); }
 
     /* MAIN */
     .main { flex: 1; overflow-y: auto; padding: 22px; }
@@ -74,18 +91,8 @@
       border-radius: 6px; padding: 5px 10px; font: inherit; font-size: .83rem; cursor: pointer;
     }
     .pill { font-size: .72rem; padding: 2px 10px; border-radius: 20px; font-weight: 600; }
-    .pill.calls { background: rgba(63,185,80,.15); color: var(--accent2); }
-    .pill.puts  { background: rgba(247,129,102,.15); color: var(--warn); }
-    
-    /* EXPIRATION BUTTONS */
-    .exp-list { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-    .exp-btn {
-      background: var(--surface); border: 1px solid var(--border); color: var(--muted);
-      border-radius: 6px; padding: 6px 14px; font: inherit; font-size: .8rem;
-      cursor: pointer; transition: all .15s; font-weight: 500;
-    }
-    .exp-btn:hover { border-color: var(--accent); color: var(--text); }
-    .exp-btn.active { border-color: var(--accent); background: rgba(88,166,255,.12); color: var(--accent); font-weight: 600; }
+    .pill.calls { background: rgba(119, 229, 5, 0.2); color: #77e505; }
+    .pill.puts  { background: rgba(80, 255, 255, 0.22); color: #5fffff; }
     h2 { font-size: .98rem; font-weight: 600; }
     .stats { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
     .stat-card { background: var(--surface); border: 1px solid var(--border);
@@ -100,9 +107,35 @@
     tbody tr:hover { background: rgba(88,166,255,.05); }
     tbody td { padding: 6px 11px; }
     .mid { font-weight: 600; color: var(--accent); }
-    .call-row td:first-child { border-left: 3px solid var(--accent2); }
-    .put-row  td:first-child { border-left: 3px solid var(--warn); }
-    .empty { text-align: center; padding: 48px; color: var(--muted); font-size: .9rem; }
+    .chain-combined-wrap { overflow-x: auto; margin-bottom: 8px; -webkit-overflow-scrolling: touch; }
+    table.chain-combined { width: 100%; border-collapse: collapse; font-size: .74rem; min-width: 820px; }
+    table.chain-combined thead tr:first-child th {
+      position: sticky; top: 0; z-index: 3; background: var(--bg);
+      padding: 6px 8px; font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--chain-header);
+    }
+    table.chain-combined thead tr:nth-child(2) th {
+      position: sticky; top: 1.85rem; z-index: 2; background: var(--bg);
+      padding: 5px 6px; font-size: .65rem; white-space: nowrap;
+      color: var(--chain-header);
+    }
+    table.chain-combined .call-zone { background: rgba(63,185,80,.07); }
+    table.chain-combined thead .call-zone { background: rgba(63,185,80,.12); }
+    table.chain-combined .put-zone { background: rgba(247,129,102,.07); }
+    table.chain-combined thead .put-zone { background: rgba(247,129,102,.12); }
+    table.chain-combined .strike-col {
+      background: rgba(88,166,255,.1); font-weight: 700; text-align: center;
+      border-left: 2px solid var(--border); border-right: 2px solid var(--border);
+      min-width: 4.5rem;
+    }
+    table.chain-combined thead .strike-col { background: rgba(88,166,255,.15); }
+    table.chain-combined tbody td { padding: 5px 6px; color: var(--chain-text); }
+    table.chain-combined tbody td.mid { color: #7cafff; }
+    table.chain-combined td.chain-cell-muted { color: var(--chain-muted); }
+    table.chain-combined .chain-vol-suffix { color: var(--chain-muted); font-size: .78em; font-weight: 500; }
+    .chain-table-footnote { font-size: .72rem; color: var(--chain-muted); margin-bottom: 10px; }
+    .chain-empty-msg { color: var(--chain-muted); font-size: .85rem; padding: 12px 0; }
+    .empty { text-align: center; padding: 3px; color: var(--muted); font-size: .9rem; }
     .loader { text-align: center; padding: 32px; color: var(--muted); font-size: .85rem; }
     .refresh-btn {
       margin-left: auto; background: var(--accent); color: #000; border: none;
@@ -147,9 +180,16 @@
     }
     .toast.show { opacity: 1; }
     
-    /* TAB CONTENT */
+    /* TAB CONTENT — active tab fills layout (Chains is single-column main) */
     .tab-content { display: none; }
-    .tab-content.active { display: block; }
+    .tab-content.active {
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+    }
     
     /* SIGNALS TAB */
     .signals-toolbar {
@@ -165,6 +205,12 @@
     tbody tr.clickable { cursor: pointer; }
     tbody tr.clickable:hover { background: rgba(88,166,255,.08); }
     
+    .modal.chain-stats-modal {
+      min-width: 280px; max-width: 380px; padding: 22px 24px;
+    }
+    .modal.chain-stats-modal h2 { margin-bottom: 16px; font-size: .95rem; }
+    .chain-stats-modal .stats { margin-bottom: 0; }
+
     /* DETAIL MODAL */
     .modal.detail-modal { min-width: 700px; max-width: 900px; max-height: 85vh; overflow-y: auto; }
     .detail-section { margin-bottom: 24px; }
@@ -190,19 +236,40 @@
   </nav>
   <span class="badge data" id="dataBadge">data: —</span>
   <span class="badge config" id="configBadge">configured: —</span>
+  <div class="file-import-group" id="fileImportGroup" style="display:none;">
+    <select id="fileImportTicker" onchange="onFileImportTickerChange()">
+      <option value="">Ticker</option>
+    </select>
+    <select id="fileImportDate" onchange="onFileImportDateChange()" disabled>
+      <option value="">Date</option>
+    </select>
+    <select id="fileImportTime" onchange="onFileImportTimeChange()" disabled>
+      <option value="">Time</option>
+    </select>
+    <button type="button" class="file-import-btn" id="fileImportBtn" onclick="insertChainFile()" disabled>Insert</button>
+  </div>
   <button class="settings-btn" onclick="openSettings()">⚙ Settings</button>
 </header>
 
 <div class="layout">
-  <!-- Tab 1: Chains (existing) -->
+  <!-- Tab 1: Chains -->
   <div id="chainsTab" class="tab-content active">
-    <nav class="sidebar">
-      <h3>Tickers</h3>
-      <div id="tickerList"><div class="loader">Loading…</div></div>
-      <button class="sidebar-run" id="runBtn" onclick="runPipeline()">▶ Run Pipeline</button>
-    </nav>
-    <main class="main">
-      <div id="content" class="empty">← Select a ticker to view its option chain from the Redis cache.</div>
+    <main class="main" style="width:100%">
+      <div class="toolbar" id="chainsToolbar">
+        <label>Ticker
+          <select id="chainTickerSelect" onchange="onChainTickerChange()">
+            <option value="">— Loading… —</option>
+          </select>
+        </label>
+        <label>Expiration
+          <select id="chainExpSelect" onchange="onChainExpChange()" disabled>
+            <option value="">—</option>
+          </select>
+        </label>
+        <button type="button" class="run-pipeline-btn" id="runBtn" onclick="runPipeline()">▶ Run Pipeline</button>
+        <div class="chains-toolbar-right" id="chainsToolbarRight"></div>
+      </div>
+      <div id="content" class="empty">Select a ticker above to view its option chain from the Redis cache.</div>
     </main>
   </div>
 
@@ -213,6 +280,11 @@
         <h2>Active Signals</h2>
         <button class="scan-btn" id="scanBtn" onclick="triggerScan()">🔍 Run Phase 2 Scan</button>
         <button class="refresh-btn" onclick="loadSignals()">↻ Refresh</button>
+      </div>
+      <div class="toolbar" style="margin-bottom: 14px;">
+        <label>Symbol <select id="sigFilterSymbol" onchange="renderSignalsTable()"><option value="">All</option></select></label>
+        <label>Expiration <select id="sigFilterExpiration" onchange="renderSignalsTable()"><option value="">All</option></select></label>
+        <label>Type <select id="sigFilterType" onchange="renderSignalsTable()"><option value="">All</option></select></label>
       </div>
       <div id="signalsContent"><div class="loader">Loading signals…</div></div>
     </main>
@@ -245,33 +317,51 @@
 <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeSettings()">
   <div class="modal">
     <h2>⚙ Settings</h2>
-    <div class="form-row">
-      <label>Active Provider</label>
-      <select id="settingProvider">
-        <option value="yfinance">yfinance (free, no key)</option>
-        <option value="tradier">tradier (Tradier.com)</option>
-        <option value="theta">theta (ThetaData Pro)</option>
-      </select>
-    </div>
-    <div class="form-row">
-      <label>Tradier Access Token</label>
-      <input type="password" id="settingTradierToken" placeholder="leave blank to keep existing" />
-    </div>
-    <div class="form-row">
-      <label>ThetaData Username</label>
-      <input type="text" id="settingThetaUser" placeholder="email@example.com" />
-    </div>
-    <div class="form-row">
-      <label>Redis Host</label>
-      <input type="text" id="settingRedisHost" placeholder="127.0.0.1" />
-    </div>
-    <div class="form-row">
-      <label>Redis Port</label>
-      <input type="text" id="settingRedisPort" placeholder="6379" />
-    </div>
-    <div class="modal-actions">
-      <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
-      <button class="btn-save" onclick="saveSettings()">Save & Apply</button>
+    <form autocomplete="off" onsubmit="event.preventDefault(); saveSettings();">
+      <div class="form-row">
+        <label>Active Provider</label>
+        <select id="settingProvider">
+          <option value="yfinance">yfinance (free, no key)</option>
+          <option value="tradier">tradier (Tradier.com)</option>
+          <option value="theta">theta (ThetaData Pro)</option>
+          <option value="file_folder">file_folder (CSV from folder)</option>
+        </select>
+      </div>
+      <div class="form-row" id="settingTradierTokenRow">
+        <label>Tradier Access Token</label>
+        <input type="password" id="settingTradierToken" placeholder="leave blank to keep existing" autocomplete="new-password" />
+      </div>
+      <div class="form-row" id="settingThetaUserRow">
+        <label>ThetaData Username</label>
+        <input type="text" id="settingThetaUser" placeholder="email@example.com" />
+      </div>
+      <div class="form-row" id="settingChainFilesDirRow" style="display:none;">
+        <label>Folder CSV Path (CHAIN_FILES_DIR)</label>
+        <input type="text" id="settingChainFilesDir" placeholder="./data/chain_files or /absolute/path" />
+      </div>
+      <div class="form-row">
+        <label>Redis Host</label>
+        <input type="text" id="settingRedisHost" placeholder="127.0.0.1" />
+      </div>
+      <div class="form-row">
+        <label>Redis Port</label>
+        <input type="text" id="settingRedisPort" placeholder="6379" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="closeSettings()">Cancel</button>
+        <button type="submit" class="btn-save">Save & Apply</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Chain stats (info) -->
+<div class="modal-overlay" id="chainStatsOverlay" onclick="if(event.target===this)closeChainStatsModal()">
+  <div class="modal chain-stats-modal" onclick="event.stopPropagation()">
+    <h2>Chain stats</h2>
+    <div id="chainStatsContent"></div>
+    <div class="modal-actions" style="margin-top: 18px;">
+      <button type="button" class="btn-cancel" onclick="closeChainStatsModal()">Close</button>
     </div>
   </div>
 </div>
@@ -292,6 +382,77 @@
 <script>
   const API = 'http://localhost:5001/api';
   let currentTicker = null, currentExp = null, allTicks = [];
+  let chainFilesInventory = { tickers: [], by_ticker: {} };
+  let activeSignalsRaw = [];
+  /** Set when chain view is rendered; used by info modal */
+  let lastChainStats = null;
+
+  function escapeAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  function resetChainExpSelect() {
+    const expSel = document.getElementById('chainExpSelect');
+    if (!expSel) return;
+    expSel.innerHTML = '<option value="">—</option>';
+    expSel.value = '';
+    expSel.disabled = true;
+  }
+
+  function resetChainsToolbarRight() {
+    const el = document.getElementById('chainsToolbarRight');
+    if (el) el.innerHTML = '';
+    lastChainStats = null;
+    closeChainStatsModal();
+  }
+
+  function openChainStatsModal() {
+    if (!lastChainStats) return;
+    const s = lastChainStats;
+    const prov = escapeAttr(String(s.provider));
+    const sym = escapeAttr(String(s.ticker));
+    const exp = escapeAttr(String(s.expiration));
+    document.getElementById('chainStatsContent').innerHTML = `
+      <div class="stats">
+        <div class="stat-card"><div class="label">Symbol</div><div class="value" style="font-size:1.1rem">${sym}</div></div>
+        <div class="stat-card"><div class="label">Expiration</div><div class="value" style="font-size:.95rem">${exp}</div></div>
+        <div class="stat-card"><div class="label">Ticks (this exp)</div><div class="value">${s.ticksInView}</div></div>
+        <div class="stat-card"><div class="label">Expirations</div><div class="value">${s.expirations}</div></div>
+        <div class="stat-card"><div class="label">Calls</div><div class="value">${s.calls}</div></div>
+        <div class="stat-card"><div class="label">Puts</div><div class="value">${s.puts}</div></div>
+        <div class="stat-card" style="min-width:100%"><div class="label">Data provider</div><div class="value" style="font-size:.95rem">${prov}</div></div>
+      </div>`;
+    document.getElementById('chainStatsOverlay').classList.add('open');
+  }
+
+  function closeChainStatsModal() {
+    const o = document.getElementById('chainStatsOverlay');
+    if (o) o.classList.remove('open');
+  }
+
+  function onChainExpChange() {
+    const expSel = document.getElementById('chainExpSelect');
+    if (!expSel || expSel.disabled || !currentTicker || !allTicks.length) return;
+    const v = expSel.value;
+    if (!v) return;
+    currentExp = v;
+    renderChain(currentTicker, allTicks);
+  }
+
+  function onChainTickerChange() {
+    const v = document.getElementById('chainTickerSelect').value;
+    if (!v) {
+      currentTicker = null;
+      currentExp = null;
+      allTicks = [];
+      resetChainExpSelect();
+      resetChainsToolbarRight();
+      document.getElementById('content').innerHTML =
+        '<div class="empty">Select a ticker above to view its option chain from the Redis cache.</div>';
+      return;
+    }
+    selectTicker(v);
+  }
 
   function fmtFixed(value, decimals) {
     if (value === null || value === undefined || value === '') return '—';
@@ -320,82 +481,358 @@
     if (!res || !res.ok) return;
     const d = await res.json();
     document.getElementById('configBadge').textContent = `configured: ${d.configured_provider}`;
+    const shouldShowFileImport = d.configured_provider === 'file_folder' && Boolean(d.chain_files_dir_configured);
+    await loadChainFilesInventory(shouldShowFileImport);
+  }
+
+  function resetFileImportSelect(id, placeholder, disabled = true) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = `<option value="">${placeholder}</option>`;
+    el.value = '';
+    el.disabled = disabled;
+  }
+
+  function updateFileInsertEnabled() {
+    const ticker = document.getElementById('fileImportTicker')?.value || '';
+    const date = document.getElementById('fileImportDate')?.value || '';
+    const time = document.getElementById('fileImportTime')?.value || '';
+    const btn = document.getElementById('fileImportBtn');
+    if (btn) btn.disabled = !(ticker && date && time);
+  }
+
+  async function loadChainFilesInventory(enabled) {
+    const group = document.getElementById('fileImportGroup');
+    const prevTicker = document.getElementById('fileImportTicker')?.value || '';
+    const prevDate = document.getElementById('fileImportDate')?.value || '';
+    const prevTime = document.getElementById('fileImportTime')?.value || '';
+    if (!enabled) {
+      if (group) group.style.display = 'none';
+      return;
+    }
+    const res = await fetch(`${API}/chain-files/inventory`).catch(() => null);
+    if (!res || !res.ok) {
+      if (group) group.style.display = 'none';
+      return;
+    }
+    const data = await res.json();
+    chainFilesInventory = {
+      tickers: Array.isArray(data.tickers) ? data.tickers : [],
+      by_ticker: data.by_ticker || {},
+    };
+    if (!chainFilesInventory.tickers.length) {
+      if (group) group.style.display = 'none';
+      return;
+    }
+
+    if (group) group.style.display = 'flex';
+    const tickerSel = document.getElementById('fileImportTicker');
+    tickerSel.innerHTML = '<option value="">Ticker</option>' +
+      chainFilesInventory.tickers.map(t => `<option value="${escapeAttr(t)}">${escapeAttr(t)}</option>`).join('');
+    if (prevTicker && chainFilesInventory.tickers.includes(prevTicker)) {
+      tickerSel.value = prevTicker;
+      const dates = Object.keys(chainFilesInventory.by_ticker[prevTicker] || {});
+      const dateSel = document.getElementById('fileImportDate');
+      dateSel.innerHTML = '<option value="">Date</option>' + dates.map(d => `<option value="${escapeAttr(d)}">${escapeAttr(d)}</option>`).join('');
+      dateSel.disabled = dates.length === 0;
+      if (prevDate && dates.includes(prevDate)) {
+        dateSel.value = prevDate;
+        const times = chainFilesInventory.by_ticker[prevTicker]?.[prevDate] || [];
+        const timeSel = document.getElementById('fileImportTime');
+        timeSel.innerHTML = '<option value="">Time</option>' + times.map(t => `<option value="${escapeAttr(t)}">${escapeAttr(t)}</option>`).join('');
+        timeSel.disabled = times.length === 0;
+        if (prevTime && times.includes(prevTime)) {
+          timeSel.value = prevTime;
+        }
+      } else {
+        resetFileImportSelect('fileImportTime', 'Time', true);
+      }
+    } else {
+      resetFileImportSelect('fileImportDate', 'Date', true);
+      resetFileImportSelect('fileImportTime', 'Time', true);
+    }
+    updateFileInsertEnabled();
+  }
+
+  function onFileImportTickerChange() {
+    const ticker = document.getElementById('fileImportTicker').value;
+    const dateSel = document.getElementById('fileImportDate');
+    resetFileImportSelect('fileImportTime', 'Time', true);
+    if (!ticker || !chainFilesInventory.by_ticker[ticker]) {
+      resetFileImportSelect('fileImportDate', 'Date', true);
+      updateFileInsertEnabled();
+      return;
+    }
+    const dates = Object.keys(chainFilesInventory.by_ticker[ticker]);
+    dateSel.innerHTML = '<option value="">Date</option>' + dates.map(d => `<option value="${escapeAttr(d)}">${escapeAttr(d)}</option>`).join('');
+    dateSel.disabled = false;
+    updateFileInsertEnabled();
+  }
+
+  function onFileImportDateChange() {
+    const ticker = document.getElementById('fileImportTicker').value;
+    const date = document.getElementById('fileImportDate').value;
+    const timeSel = document.getElementById('fileImportTime');
+    if (!ticker || !date) {
+      resetFileImportSelect('fileImportTime', 'Time', true);
+      updateFileInsertEnabled();
+      return;
+    }
+    const times = chainFilesInventory.by_ticker[ticker]?.[date] || [];
+    timeSel.innerHTML = '<option value="">Time</option>' + times.map(t => `<option value="${escapeAttr(t)}">${escapeAttr(t)}</option>`).join('');
+    timeSel.disabled = times.length === 0;
+    updateFileInsertEnabled();
+  }
+
+  function onFileImportTimeChange() {
+    updateFileInsertEnabled();
+  }
+
+  async function insertChainFile() {
+    const ticker = document.getElementById('fileImportTicker').value;
+    const date = document.getElementById('fileImportDate').value;
+    const time = document.getElementById('fileImportTime').value;
+    const btn = document.getElementById('fileImportBtn');
+    if (!ticker || !date || !time || !btn) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Inserting...';
+    const res = await fetch(`${API}/chain-files/import`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ ticker, date, time }),
+    }).catch(() => null);
+
+    if (!res || !res.ok) {
+      let msg = 'Insert failed';
+      if (res) {
+        try {
+          const err = await res.json();
+          if (err?.message) msg = `Insert failed: ${err.message}`;
+        } catch (_) {}
+      }
+      showToast(msg, false);
+      btn.textContent = 'Insert';
+      updateFileInsertEnabled();
+      return;
+    }
+
+    const data = await res.json();
+    showToast(`Inserted ${data.ticks} ticks for ${ticker}`);
+    btn.textContent = 'Insert';
+    updateFileInsertEnabled();
+    await loadTickers();
+    if (currentTicker === ticker) {
+      await selectTicker(ticker);
+    }
   }
 
   async function loadTickers() {
     await loadStatus();
     const res = await fetch(`${API}/tickers`).catch(() => null);
-    const list = document.getElementById('tickerList');
+    const sel = document.getElementById('chainTickerSelect');
+    const contentEl = document.getElementById('content');
     if (!res || !res.ok) {
-      list.innerHTML = '<div style="padding:12px;color:#f78166;font-size:.8rem">⚠ API offline</div>';
+      sel.innerHTML = '<option value="">— API offline —</option>';
+      currentTicker = null;
+      resetChainExpSelect();
+      resetChainsToolbarRight();
+      contentEl.innerHTML = '<div class="empty">Cannot load tickers — API offline.</div>';
       return;
     }
     const { tickers } = await res.json();
     if (!tickers.length) {
-      list.innerHTML = '<div style="padding:12px;color:#8b949e;font-size:.8rem">No data in cache.<br>Run the pipeline first.</div>';
+      sel.innerHTML = '<option value="">— No data in cache —</option>';
+      currentTicker = null;
+      resetChainExpSelect();
+      resetChainsToolbarRight();
+      contentEl.innerHTML = '<div class="empty">No data in cache. Run the pipeline first.</div>';
       return;
     }
-    list.innerHTML = tickers.map(t =>
-      `<button class="ticker-btn" onclick="selectTicker('${t}')">${t}</button>`
-    ).join('');
+    sel.innerHTML =
+      '<option value="">— Select ticker —</option>' +
+      tickers.map(t => `<option value="${escapeAttr(t)}">${escapeAttr(t)}</option>`).join('');
+    if (currentTicker && tickers.includes(currentTicker)) {
+      sel.value = currentTicker;
+    }
   }
 
   async function selectTicker(ticker) {
     currentTicker = ticker; currentExp = null;
-    document.querySelectorAll('.ticker-btn').forEach(b => b.classList.toggle('active', b.textContent === ticker));
+    const sel = document.getElementById('chainTickerSelect');
+    if (sel) sel.value = ticker;
+    resetChainExpSelect();
+    resetChainsToolbarRight();
     document.getElementById('content').innerHTML = '<div class="loader">Fetching…</div>';
     const res = await fetch(`${API}/chain/${ticker}`).catch(() => null);
-    if (!res || !res.ok) { document.getElementById('content').innerHTML = '<div class="empty">API error</div>'; return; }
+    if (!res || !res.ok) {
+      document.getElementById('content').innerHTML = '<div class="empty">API error</div>';
+      return;
+    }
     const data = await res.json();
     allTicks = data.ticks || [];
     renderChain(ticker, allTicks);
   }
 
   function renderChain(ticker, ticks) {
-    if (!ticks.length) { document.getElementById('content').innerHTML = '<div class="empty">No ticks for this ticker in cache.</div>'; return; }
+    if (!ticks.length) {
+      resetChainExpSelect();
+      resetChainsToolbarRight();
+      document.getElementById('content').innerHTML = '<div class="empty">No ticks for this ticker in cache.</div>';
+      return;
+    }
     const exps = [...new Set(ticks.map(t => t.expiration))].sort();
-    const exp = currentExp || exps[0]; currentExp = exp;
+    const exp = (currentExp && exps.includes(currentExp)) ? currentExp : exps[0];
+    currentExp = exp;
+    const expSel = document.getElementById('chainExpSelect');
+    expSel.innerHTML = exps.map(e => `<option value="${escapeAttr(e)}">${escapeAttr(e)}</option>`).join('');
+    expSel.value = exp;
+    expSel.disabled = false;
+
     const filtered = ticks.filter(t => t.expiration === exp);
     const calls = filtered.filter(t => t.right === 'C').sort((a,b) => a.strike - b.strike);
     const puts  = filtered.filter(t => t.right === 'P').sort((a,b) => a.strike - b.strike);
     const provider = ticks[0]?.provider || '—';
     document.getElementById('dataBadge').textContent = `data: ${provider}`;
-    
-    const expButtons = exps.map(e => 
-      `<button class="exp-btn ${e===exp?'active':''}" onclick="currentExp='${e}';renderChain('${ticker}',allTicks)">${e}</button>`
-    ).join('');
-    
-    document.getElementById('content').innerHTML = `
-      <div class="toolbar">
-        <h2>${ticker}</h2>
+
+    lastChainStats = {
+      ticker,
+      expiration: exp,
+      ticksInView: filtered.length,
+      expirations: exps.length,
+      provider,
+      calls: calls.length,
+      puts: puts.length,
+    };
+
+    const tr = document.getElementById('chainsToolbarRight');
+    if (tr) {
+      tr.innerHTML = `
+        <button type="button" class="chain-info-btn" title="Chain stats">i</button>
         <span class="pill calls">Calls: ${calls.length}</span>
         <span class="pill puts">Puts: ${puts.length}</span>
-        <button class="refresh-btn" onclick="selectTicker('${ticker}')">↻ Refresh</button>
-      </div>
-      <div class="exp-list">${expButtons}</div>
-      <div class="stats">
-        <div class="stat-card"><div class="label">Ticks</div><div class="value">${filtered.length}</div></div>
-        <div class="stat-card"><div class="label">Expirations</div><div class="value">${exps.length}</div></div>
-        <div class="stat-card"><div class="label">Data Provider</div><div class="value" style="font-size:.95rem">${provider}</div></div>
-      </div>
-      ${buildTable(calls, 'C')}<br>${buildTable(puts, 'P')}`;
+        <button type="button" class="refresh-btn chain-refresh-btn" data-chain-ticker="${escapeAttr(ticker)}">↻ Refresh</button>`;
+    }
+
+    document.getElementById('content').innerHTML = buildCombinedChainTable(calls, puts);
+
+    const statsOv = document.getElementById('chainStatsOverlay');
+    if (statsOv && statsOv.classList.contains('open')) openChainStatsModal();
   }
 
-  function buildTable(rows, right) {
-    const cls = right === 'C' ? 'call-row' : 'put-row';
-    const label = right === 'C' ? '📈 Calls' : '📉 Puts';
-    if (!rows.length) return `<p style="color:#8b949e;font-size:.85rem">${label}: no data</p>`;
+  function chainTickDate(ts) {
+    if (ts == null || ts === '') return '—';
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) {
+      const s = String(ts).replace('T', ' ');
+      return s.length >= 16 ? s.slice(0, 16) : s;
+    }
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  }
+
+  function fmtOptNum(v, decimals) {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (Number.isNaN(n)) return '—';
+    return n.toFixed(decimals);
+  }
+
+  /** (bid + ask) / 2 from live bid/ask */
+  function calcMidFromBidAsk(t) {
+    if (!t) return null;
+    const b = Number(t.bid);
+    const a = Number(t.ask);
+    if (Number.isNaN(b) || Number.isNaN(a)) return null;
+    return (b + a) / 2;
+  }
+
+  /** e.g. 15.00 [v: 122] — uses contract day volume (same for bid/ask until API exposes per-side size) */
+  function fmtPriceWithVol(priceField, t) {
+    if (!t) return '—';
+    const p = fmtOptNum(t[priceField], 2);
+    if (p === '—') return '—';
+    const v = t.volume != null && Number(t.volume) > 0 ? String(t.volume) : '—';
+    return `${p}<span class="chain-vol-suffix"> [v:&nbsp;${v}]</span>`;
+  }
+
+  function buildCombinedChainTable(calls, puts) {
+    const callByStrike = new Map(calls.map(t => [t.strike, t]));
+    const putByStrike = new Map(puts.map(t => [t.strike, t]));
+    const strikes = [...new Set([...callByStrike.keys(), ...putByStrike.keys()])].sort((a, b) => a - b);
+    if (!strikes.length) {
+      return '<p class="chain-empty-msg">No strikes for this expiration.</p>';
+    }
+
+    const emptyCall = () => '<td class="call-zone">—</td>'.repeat(6);
+    const emptyPut = () => '<td class="put-zone">—</td>'.repeat(6);
+
+    function callCells(t) {
+      if (!t) return emptyCall();
+      const midCalc = calcMidFromBidAsk(t);
+      return `
+        <td class="call-zone">${t.open_interest ?? '—'}</td>
+        <td class="call-zone chain-cell-muted">${chainTickDate(t.timestamp)}</td>
+        <td class="call-zone" title="Bid and contract day volume">${fmtPriceWithVol('bid', t)}</td>
+        <td class="call-zone" title="Ask and contract day volume">${fmtPriceWithVol('ask', t)}</td>
+        <td class="call-zone">${fmtOptNum(t.mid, 2)}</td>
+        <td class="call-zone mid">${midCalc != null ? fmtOptNum(midCalc, 2) : '—'}</td>`;
+    }
+
+    function putCells(t) {
+      if (!t) return emptyPut();
+      const midCalc = calcMidFromBidAsk(t);
+      return `
+        <td class="put-zone mid">${midCalc != null ? fmtOptNum(midCalc, 2) : '—'}</td>
+        <td class="put-zone">${fmtOptNum(t.mid, 2)}</td>
+        <td class="put-zone" title="Bid and contract day volume">${fmtPriceWithVol('bid', t)}</td>
+        <td class="put-zone" title="Ask and contract day volume">${fmtPriceWithVol('ask', t)}</td>
+        <td class="put-zone chain-cell-muted">${chainTickDate(t.timestamp)}</td>
+        <td class="put-zone">${t.open_interest ?? '—'}</td>`;
+    }
+
+    const thead = `
+      <thead>
+        <tr>
+          <th class="call-zone" colspan="6">Calls</th>
+          <th class="strike-col" rowspan="2">Strike</th>
+          <th class="put-zone" colspan="6">Puts</th>
+        </tr>
+        <tr>
+          <th class="call-zone">OI</th>
+          <th class="call-zone">Last update</th>
+          <th class="call-zone">Bid</th>
+          <th class="call-zone">Ask</th>
+          <th class="call-zone">Last</th>
+          <th class="call-zone">Mid</th>
+          <th class="put-zone">Mid</th>
+          <th class="put-zone">Last</th>
+          <th class="put-zone">Bid</th>
+          <th class="put-zone">Ask</th>
+          <th class="put-zone">Last update</th>
+          <th class="put-zone">OI</th>
+        </tr>
+      </thead>`;
+
+    const tbody = strikes.map(s => {
+      const c = callByStrike.get(s);
+      const p = putByStrike.get(s);
+      const strikeCell = `<td class="strike-col">${fmtOptNum(s, 2)}</td>`;
+      return `<tr>${callCells(c)}${strikeCell}${putCells(p)}</tr>`;
+    }).join('');
+
     return `
-      <h3 style="margin-bottom:8px;font-size:.83rem;color:${right==='C'?'#3fb950':'#f78166'}">${label}</h3>
-      <table>
-        <thead><tr><th>Strike</th><th>Bid</th><th>Ask</th><th>Mid</th><th>Volume</th><th>OI</th><th>Timestamp</th></tr></thead>
-        <tbody>${rows.map(t => `
-          <tr class="${cls}">
-            <td>${t.strike}</td><td>${t.bid}</td><td>${t.ask}</td>
-            <td class="mid">${t.mid}</td><td>${t.volume}</td><td>${t.open_interest}</td>
-            <td style="color:#8b949e;font-size:.73rem">${t.timestamp?.slice(0,19)??'—'}</td>
-          </tr>`).join('')}</tbody>
-      </table>`;
+      <p class="chain-table-footnote">
+        <strong>Last update</strong> is the quote snapshot date from cache. <strong>Mid</strong> is (bid&nbsp;+&nbsp;ask)&nbsp;/&nbsp;2.
+        <strong>[v: …]</strong> uses contract day volume (same on bid and ask until per-side size exists in the API).
+      </p>
+      <div class="chain-combined-wrap">
+        <table class="chain-combined">${thead}<tbody>${tbody}</tbody></table>
+      </div>`;
   }
 
   async function runPipeline() {
@@ -417,8 +854,10 @@
       const d = await res.json();
       document.getElementById('settingProvider').value = d.DATA_PROVIDER || 'yfinance';
       document.getElementById('settingThetaUser').value = d.THETA_USERNAME || '';
+      document.getElementById('settingChainFilesDir').value = d.CHAIN_FILES_DIR || '';
       document.getElementById('settingRedisHost').value = d.REDIS_HOST || '127.0.0.1';
       document.getElementById('settingRedisPort').value = d.REDIS_PORT || '6379';
+      toggleChainFilesDirField();
     }
     document.getElementById('modalOverlay').classList.add('open');
   }
@@ -431,6 +870,9 @@
     if (token) payload.TRADIER_ACCESS_TOKEN = token;
     const user = document.getElementById('settingThetaUser').value;
     if (user) payload.THETA_USERNAME = user;
+    if (payload.DATA_PROVIDER === 'file_folder') {
+      payload.CHAIN_FILES_DIR = document.getElementById('settingChainFilesDir').value.trim();
+    }
     payload.REDIS_HOST = document.getElementById('settingRedisHost').value || '127.0.0.1';
     payload.REDIS_PORT = document.getElementById('settingRedisPort').value || '6379';
     const res = await fetch(`${API}/settings`, {
@@ -445,7 +887,31 @@
     }
   }
 
+  function toggleChainFilesDirField() {
+    const provider = document.getElementById('settingProvider')?.value;
+    const row = document.getElementById('settingChainFilesDirRow');
+    const tradierRow = document.getElementById('settingTradierTokenRow');
+    const thetaRow = document.getElementById('settingThetaUserRow');
+    const isFileFolder = provider === 'file_folder';
+    if (!row) return;
+    row.style.display = isFileFolder ? 'block' : 'none';
+    if (tradierRow) tradierRow.style.display = isFileFolder ? 'none' : 'block';
+    if (thetaRow) thetaRow.style.display = isFileFolder ? 'none' : 'block';
+  }
+
+  document.getElementById('chainsTab').addEventListener('click', (e) => {
+    if (e.target.closest('.chain-info-btn')) {
+      openChainStatsModal();
+      return;
+    }
+    const btn = e.target.closest('.chain-refresh-btn');
+    if (!btn) return;
+    const sym = btn.getAttribute('data-chain-ticker');
+    if (sym) selectTicker(sym);
+  });
+
   loadTickers();
+  document.getElementById('settingProvider').addEventListener('change', toggleChainFilesDirField);
 
   // ===== TAB SWITCHING =====
   function showTab(name) {
@@ -460,23 +926,73 @@
   }
 
   // ===== SIGNALS TAB =====
-  async function loadSignals() {
+  function signalTypeLabel(sig) {
+    return sig.structure_label != null && sig.structure_label !== '' ? sig.structure_label : '—';
+  }
+
+  function populateSignalFilterOptions() {
+    const symSel = document.getElementById('sigFilterSymbol');
+    const expSel = document.getElementById('sigFilterExpiration');
+    const typeSel = document.getElementById('sigFilterType');
+    if (!symSel || !expSel || !typeSel) return;
+
+    const curSym = symSel.value;
+    const curExp = expSel.value;
+    const curType = typeSel.value;
+
+    const symbols = [...new Set(activeSignalsRaw.map(s => s.symbol))].sort();
+    const exps = [...new Set(activeSignalsRaw.map(s => s.expiration))].sort();
+    const types = [...new Set(activeSignalsRaw.map(s => signalTypeLabel(s)))].sort();
+
+    const fill = (sel, values) => {
+      sel.innerHTML = '';
+      const o0 = document.createElement('option');
+      o0.value = '';
+      o0.textContent = 'All';
+      sel.appendChild(o0);
+      values.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        sel.appendChild(o);
+      });
+    };
+
+    fill(symSel, symbols);
+    fill(expSel, exps);
+    fill(typeSel, types);
+
+    if (symbols.includes(curSym)) symSel.value = curSym;
+    if (exps.includes(curExp)) expSel.value = curExp;
+    if (types.includes(curType)) typeSel.value = curType;
+  }
+
+  function renderSignalsTable() {
     const content = document.getElementById('signalsContent');
-    content.innerHTML = '<div class="loader">Loading signals…</div>';
-    
-    const res = await fetch(`${API}/signals/active`).catch(() => null);
-    if (!res || !res.ok) {
-      content.innerHTML = '<div class="empty">Failed to load signals</div>';
-      return;
-    }
-    
-    const {signals} = await res.json();
-    if (!signals || signals.length === 0) {
+    const symSel = document.getElementById('sigFilterSymbol');
+    const expSel = document.getElementById('sigFilterExpiration');
+    const typeSel = document.getElementById('sigFilterType');
+
+    const fs = symSel ? symSel.value : '';
+    const fe = expSel ? expSel.value : '';
+    const ft = typeSel ? typeSel.value : '';
+
+    let filtered = activeSignalsRaw;
+    if (fs) filtered = filtered.filter(s => s.symbol === fs);
+    if (fe) filtered = filtered.filter(s => s.expiration === fe);
+    if (ft) filtered = filtered.filter(s => signalTypeLabel(s) === ft);
+
+    if (!activeSignalsRaw.length) {
       content.innerHTML = '<div class="empty">No active signals. Run Phase 2 scan to generate signals.</div>';
       return;
     }
-    
-    const rows = signals.map(sig => {
+
+    if (!filtered.length) {
+      content.innerHTML = '<div class="empty">No signals match the current filters.</div>';
+      return;
+    }
+
+    const rows = filtered.map(sig => {
       const gateClass = `gate-${sig.gate_status || 'idle'}`;
       return `
         <tr class="clickable" onclick="showSignalDetail('${sig.symbol}', '${sig.expiration}')">
@@ -491,7 +1007,7 @@
           <td>${fmtPercent(sig.remaining_percent, 1)}</td>
         </tr>`;
     }).join('');
-    
+
     content.innerHTML = `
       <table>
         <thead>
@@ -509,6 +1025,24 @@
         </thead>
         <tbody>${rows}</tbody>
       </table>`;
+  }
+
+  async function loadSignals() {
+    const content = document.getElementById('signalsContent');
+    content.innerHTML = '<div class="loader">Loading signals…</div>';
+
+    const res = await fetch(`${API}/signals/active`).catch(() => null);
+    if (!res || !res.ok) {
+      activeSignalsRaw = [];
+      populateSignalFilterOptions();
+      content.innerHTML = '<div class="empty">Failed to load signals</div>';
+      return;
+    }
+
+    const data = await res.json();
+    activeSignalsRaw = Array.isArray(data.signals) ? data.signals : [];
+    populateSignalFilterOptions();
+    renderSignalsTable();
   }
 
   async function showSignalDetail(symbol, expiration) {
