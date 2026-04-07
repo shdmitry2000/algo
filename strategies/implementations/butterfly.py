@@ -1,31 +1,43 @@
 """
-Butterfly strategy scanner (Standard + Shifted, BUY/SELL, Imbalanced).
-Doc reference: Pages 5, 9, 10-11, 15-16
+Butterfly strategy scanner.
+
+CORRECT DEFINITION:
+- Butterfly = 3 STRIKES, 4 LEGS (middle strike has 2x quantity)
+- Structure: Long 1 @ K1, Short 2 @ K2, Long 1 @ K3
+- All options are same type (all calls OR all puts)
+- Strikes are typically equidistant
+
+Example:
+    Call Butterfly: Buy 95C, Sell 2x 100C, Buy 105C
+    Put Butterfly: Buy 105P, Sell 2x 100P, Buy 95P
+
+Max profit occurs when underlying price = middle strike at expiration.
+
+Supports BUY, SELL, and imbalanced quantity variants.
 """
 import logging
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
-from filters.phase2strat1.models import Leg
-from filters.phase2strat1.chain_index import ChainIndex
-from filters.phase2strat1.spread_math import apply_spread_cap
-from filters.phase2strat1.strategies.base import BaseStrategy, StrategyCandidate, STRATEGY_TYPES
+from strategies.core import (
+    BaseStrategy,
+    StrategyCandidate,
+    Leg,
+    ChainData,
+    apply_spread_cap,
+    compute_bed,
+    compute_annual_return,
+)
+from strategies.core.registry import register_strategy
 
 logger = logging.getLogger(__name__)
 
 
+@register_strategy("BF")
 class ButterflyStrategy(BaseStrategy):
     """
-    Butterfly scanner (Standard adjacent + Shifted non-adjacent).
+    Butterfly scanner (3 strikes: K1 < K2 < K3, with 2x quantity at K2).
     Supports BUY, SELL, and imbalanced quantities.
-    
-    Standard BF:
-        - Buy spread + Sell adjacent spread (same side)
-        - Call BF: Buy 79/80, Sell 80/81 → Long 79C, Short 2x80C, Long 81C
-        - Put BF: Buy 80/79, Sell 79/78 → Long 80P, Short 2x79P, Long 78P
-    
-    Shifted BF:
-        - Buy spread + Sell NON-adjacent spread (same side)
     """
     
     @property
@@ -34,18 +46,24 @@ class ButterflyStrategy(BaseStrategy):
     
     def scan(
         self,
-        chain_idx: ChainIndex,
+        chain_data: ChainData,
         dte: int,
         fee_per_leg: float,
         spread_cap_bound: float = 0.01,
         min_liquidity_bid: float = 0.0,
         min_liquidity_ask: float = 0.0,
-        include_imbalanced: bool = False,  # Disabled by default for performance
+        include_imbalanced: bool = False,
         **kwargs
     ) -> List[StrategyCandidate]:
-        """Scan for standard adjacent Butterfly candidates (BUY/SELL)."""
+        """
+        Scan for Butterfly candidates (3 strikes, symmetric).
+        
+        Standard Butterfly:
+            - 3 strikes: K1, K2, K3 where K2 - K1 = K3 - K2
+            - Long 1 @ K1, Short 2 @ K2, Long 1 @ K3
+        """
         candidates = []
-        strikes = chain_idx.sorted_strikes()
+        strikes = chain_data.sorted_strikes()
         
         # Enumerate 3-strike symmetric combinations
         for i in range(len(strikes) - 2):
@@ -53,7 +71,7 @@ class ButterflyStrategy(BaseStrategy):
             mid_strike = strikes[i + 1]
             high_strike = strikes[i + 2]
             
-            # Check symmetry
+            # Check symmetry (equidistant strikes)
             left_width = mid_strike - low_strike
             right_width = high_strike - mid_strike
             
@@ -63,8 +81,8 @@ class ButterflyStrategy(BaseStrategy):
             width = left_width
             
             # Call BF (BUY side)
-            call_buy = self._build_bf_standard(
-                chain_idx, dte, fee_per_leg, spread_cap_bound,
+            call_buy = self._build_butterfly(
+                chain_data, dte, fee_per_leg, spread_cap_bound,
                 "call", "buy", "BF_BUY",
                 low_strike, mid_strike, high_strike, width,
                 min_liquidity_bid, min_liquidity_ask
@@ -73,8 +91,8 @@ class ButterflyStrategy(BaseStrategy):
                 candidates.append(call_buy)
             
             # Call BF (SELL side)
-            call_sell = self._build_bf_standard(
-                chain_idx, dte, fee_per_leg, spread_cap_bound,
+            call_sell = self._build_butterfly(
+                chain_data, dte, fee_per_leg, spread_cap_bound,
                 "call", "sell", "BF_SELL",
                 low_strike, mid_strike, high_strike, width,
                 min_liquidity_bid, min_liquidity_ask
@@ -83,8 +101,8 @@ class ButterflyStrategy(BaseStrategy):
                 candidates.append(call_sell)
             
             # Put BF (BUY side)
-            put_buy = self._build_bf_standard(
-                chain_idx, dte, fee_per_leg, spread_cap_bound,
+            put_buy = self._build_butterfly(
+                chain_data, dte, fee_per_leg, spread_cap_bound,
                 "put", "buy", "BF_BUY",
                 low_strike, mid_strike, high_strike, width,
                 min_liquidity_bid, min_liquidity_ask
@@ -93,8 +111,8 @@ class ButterflyStrategy(BaseStrategy):
                 candidates.append(put_buy)
             
             # Put BF (SELL side)
-            put_sell = self._build_bf_standard(
-                chain_idx, dte, fee_per_leg, spread_cap_bound,
+            put_sell = self._build_butterfly(
+                chain_data, dte, fee_per_leg, spread_cap_bound,
                 "put", "sell", "BF_SELL",
                 low_strike, mid_strike, high_strike, width,
                 min_liquidity_bid, min_liquidity_ask
@@ -103,72 +121,14 @@ class ButterflyStrategy(BaseStrategy):
                 candidates.append(put_sell)
         
         logger.info(
-            f"[Butterfly] {chain_idx.symbol} {chain_idx.expiration}: "
-            f"{len(candidates)} standard BF candidates (BUY/SELL)"
+            f"[Butterfly] {chain_data.symbol} {chain_data.expirations[0]}: "
+            f"{len(candidates)} butterfly candidates (3 strikes)"
         )
         return candidates
     
-    def scan_shifted(
+    def _build_butterfly(
         self,
-        chain_idx: ChainIndex,
-        dte: int,
-        fee_per_leg: float,
-        spread_cap_bound: float = 0.01,
-        min_liquidity_bid: float = 0.0,
-        min_liquidity_ask: float = 0.0,
-        **kwargs
-    ) -> List[StrategyCandidate]:
-        """Scan for shifted (non-adjacent) Butterfly candidates."""
-        candidates = []
-        strikes = chain_idx.sorted_strikes()
-        
-        # Limit shifted BF to avoid excessive candidates
-        # Only try shifts up to 3 strikes away
-        max_shift_gap = 3
-        
-        for i in range(len(strikes) - 2):
-            low_strike = strikes[i]
-            mid_strike = strikes[i + 1]
-            
-            for j in range(i + 2, min(i + 2 + max_shift_gap, len(strikes))):
-                high_strike = strikes[j]
-                
-                left_width = mid_strike - low_strike
-                right_width = high_strike - mid_strike
-                
-                # For shifted, widths don't need to match
-                # but we use left_width as primary
-                width = left_width
-                
-                # Call Shifted BF
-                call_buy = self._build_bf_standard(
-                    chain_idx, dte, fee_per_leg, spread_cap_bound,
-                    "call", "buy", "SHIFTED_BF_BUY",
-                    low_strike, mid_strike, high_strike, width,
-                    min_liquidity_bid, min_liquidity_ask
-                )
-                if call_buy:
-                    candidates.append(call_buy)
-                
-                # Put Shifted BF
-                put_buy = self._build_bf_standard(
-                    chain_idx, dte, fee_per_leg, spread_cap_bound,
-                    "put", "buy", "SHIFTED_BF_BUY",
-                    low_strike, mid_strike, high_strike, width,
-                    min_liquidity_bid, min_liquidity_ask
-                )
-                if put_buy:
-                    candidates.append(put_buy)
-        
-        logger.info(
-            f"[ShiftedButterfly] {chain_idx.symbol} {chain_idx.expiration}: "
-            f"{len(candidates)} shifted BF candidates"
-        )
-        return candidates
-    
-    def _build_bf_standard(
-        self,
-        chain_idx: ChainIndex,
+        chain_data: ChainData,
         dte: int,
         fee_per_leg: float,
         spread_cap_bound: float,
@@ -181,19 +141,19 @@ class ButterflyStrategy(BaseStrategy):
         width: float,
         min_liquidity_bid: float,
         min_liquidity_ask: float
-    ) -> StrategyCandidate:
-        """Build standard BF candidate (call or put, buy or sell)."""
+    ) -> Optional[StrategyCandidate]:
+        """Build butterfly candidate (3 strikes: low, mid, high with 2x at mid)."""
         
         # Get ticks
         if side == "call":
-            low_tick = chain_idx.get_call(low_strike)
-            mid_tick = chain_idx.get_call(mid_strike)
-            high_tick = chain_idx.get_call(high_strike)
+            low_tick = chain_data.get_call(low_strike)
+            mid_tick = chain_data.get_call(mid_strike)
+            high_tick = chain_data.get_call(high_strike)
             right = "C"
         else:  # put
-            low_tick = chain_idx.get_put(low_strike)
-            mid_tick = chain_idx.get_put(mid_strike)
-            high_tick = chain_idx.get_put(high_strike)
+            low_tick = chain_data.get_put(low_strike)
+            mid_tick = chain_data.get_put(mid_strike)
+            high_tick = chain_data.get_put(high_strike)
             right = "P"
         
         if not all([low_tick, mid_tick, high_tick]):
@@ -204,6 +164,7 @@ class ButterflyStrategy(BaseStrategy):
             return None
         
         # Calculate spreads
+        # Butterfly = (Long low + Long high) - (Short 2x mid)
         buy_spread_raw = low_tick.mid - mid_tick.mid
         buy_spread_capped = apply_spread_cap(buy_spread_raw, width, spread_cap_bound)
         
@@ -223,7 +184,7 @@ class ButterflyStrategy(BaseStrategy):
         # Use absolute value for calculations
         net_abs = abs(net)
         
-        leg_count = 4
+        leg_count = 3  # Butterfly has 3 unique strikes
         total_quantity = 4  # 1 + 2 + 1
         fees_total = total_quantity * fee_per_leg
         
@@ -236,9 +197,9 @@ class ButterflyStrategy(BaseStrategy):
         if remaining_profit <= 0:
             return None
         
-        break_even_days = self.compute_bed(remaining_profit, width)
+        break_even_days = compute_bed(remaining_profit, width)
         
-        # Build legs (standard BF structure)
+        # Build legs (butterfly structure: 1x, 2x, 1x)
         if open_side == "buy":
             low_action, mid_action, high_action = "BUY", "SELL", "BUY"
         else:
@@ -262,7 +223,7 @@ class ButterflyStrategy(BaseStrategy):
                 strike=mid_tick.strike,
                 right=right,
                 open_action=mid_action,
-                quantity=2,
+                quantity=2,  # BUTTERFLY: 2x at middle strike
                 bid=mid_tick.bid,
                 ask=mid_tick.ask,
                 mid=mid_tick.mid,
@@ -284,14 +245,12 @@ class ButterflyStrategy(BaseStrategy):
         ]
         
         strikes_used = sorted(set([low_tick.strike, mid_tick.strike, high_tick.strike]))
-        
-        from filters.phase2strat1.spread_math import compute_annual_return
         annual_return = compute_annual_return(remaining_profit, width, dte)
         
         candidate = StrategyCandidate(
             strategy_type=strategy_type,
-            symbol=chain_idx.symbol,
-            expiration=chain_idx.expiration,
+            symbol=chain_data.symbol,
+            expiration=chain_data.expirations[0],
             dte=dte,
             open_side=open_side,
             is_imbalanced=False,

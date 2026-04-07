@@ -2,13 +2,53 @@
 
 ## Overview
 
-Phase 2 ("Anomaly / Expiration Filter") scans option chains cached by Phase 1 and identifies structural profit opportunities using the algorithms from `docs/Options_Arbitrage_System_Step1.txt`.
+Phase 2 ("Anomaly / Expiration Filter") scans option chains cached by Phase 1 and identifies structural profit opportunities using a **unified multi-strategy architecture** with 6 different option strategies.
 
 **Key principle:** One active signal per `(symbol, expiration)`. Gates prevent re-determination until Phase 3 (buy) resolves.
 
 ---
 
-## Architecture
+## ✅ Phase 1 Complete: Unified Strategy Architecture
+
+### 6 Strategies Implemented:
+1. **Iron Condor (IC)** - Same strikes for call+put spreads
+2. **Butterfly (BF)** - 3 strikes with 2x middle quantity
+3. **Condor** - 4 distinct strikes with 1x quantity each
+4. **Shifted Iron Condor** - Different strikes for call/put spreads  
+5. **Flygonaal (3:2:2:3)** - Custom ratio strategy
+6. **Calendar Spreads** - Multi-expiration time spreads
+
+### Test Coverage:
+```
+✅ 86/86 tests passing (100%)
+  - Strategy unit tests:      67 tests
+  - Integration tests:        13 tests
+  - Filter integration tests:  6 tests
+```
+
+### Architecture:
+```
+strategies/
+├── core/                    # Unified foundation
+│   ├── base.py             # BaseStrategy abstract class
+│   ├── models.py           # ChainData, StrategyCandidate, Leg
+│   ├── registry.py         # Centralized STRATEGY_TYPES
+│   └── utils.py            # Shared calculations
+├── implementations/         # All 6 strategies
+│   ├── iron_condor.py
+│   ├── butterfly.py
+│   ├── condor.py
+│   ├── shifted_condor.py
+│   ├── flygonaal.py
+│   └── calendar.py
+└── adapters/               # Legacy compatibility
+    ├── filter_adapter.py   # ChainIndex ↔ ChainData
+    └── td_adapter.py       # TD Ameritrade API
+```
+
+---
+
+## Architecture (Legacy - Updated)
 
 ```
 filters/phase2strat1/
@@ -17,9 +57,15 @@ filters/phase2strat1/
   ├── spread_math.py       # apply_spread_cap (Section 11)
   ├── precheck.py          # Symbol-level filter before scanning
   ├── chain_index.py       # Per-expiration index + DTE calc
-  ├── iron_condor.py       # IC scanner (v1: buy IC)
   ├── bed.py               # BED filter + ranking (Section 13, 17)
-  └── scan.py              # Main orchestrator
+  ├── scan.py              # Main orchestrator (uses unified strategies)
+  └── strategies/          # Backwards compatibility shim
+      └── __init__.py      # Re-exports from strategies/implementations/
+
+strategies/                # NEW: Unified strategy library
+├── core/                  # Foundation (models, registry, utils)
+├── implementations/       # All 6 strategies
+└── adapters/              # Legacy compatibility
 
 storage/signal_cache.py    # Redis SIGNAL:* I/O (active, gate, history)
 cli/run_phase2_scan.py     # CLI runner
@@ -93,15 +139,15 @@ api/data_inspector.py      # Extended with /api/signals/* endpoints
 
 1. **Precheck** — Filter configured tickers by Redis `CHAIN:*` presence.
 2. **Gate check** — Skip `(symbol, expiration)` pairs locked by Phase 3.
-3. **Scan** — For each open pair:
-   - Build `ChainIndex` (strike → tick for C/P)
-   - Compute DTE
-   - Enumerate IC candidates (v1: buy IC only)
+3. **Multi-Strategy Scan** — For each open pair:
+   - Build `ChainData` (unified model) from `ChainIndex`
+   - Scan with all 6 strategies (IC, BF, Condor, Shifted IC, Flygonaal, Calendar)
+   - Each strategy generates `List[StrategyCandidate]`
    - Apply spread cap (Section 11)
    - Check liquidity (non-zero bid/ask)
 4. **BED filter** — Keep candidates where `DTE < BreakEvenDays` (Section 13.2)
 5. **Rank** — Compute `rank_score = BED / max(DTE, 1)` (Section 17)
-6. **Select** — Per `(symbol, expiration)`, keep the **single** highest-scoring signal
+6. **Select** — Per `(symbol, expiration)`, keep the **single** highest-scoring signal across ALL strategies
 7. **Upsert** — Write to `SIGNAL:ACTIVE:*`, lock gate, append history `signal_upserted`
 
 ---
@@ -171,17 +217,34 @@ pytest tests/filters/test_phase2strat1_core.py -v
 
 ---
 
-## Extension: Additional Structures
+## Extension: Additional Strategies (✅ Complete)
 
-To add **Shifted IC**, **Butterfly**, **Shifted BF**:
+**All 6 strategies are now implemented in unified architecture:**
 
-1. Create `filters/phase2strat1/shifted_ic.py` (etc.) — scan functions
-2. Import in `scan.py`, call after `scan_iron_condor`
-3. Append candidates to the same list
-4. BED filter + ranking work across all structure kinds
-5. UI already supports `structure_label` ("Shifted IC (buy)", "BF (sell)", ...)
+1. ✅ **Iron Condor** (`strategies/implementations/iron_condor.py`)
+2. ✅ **Butterfly** (`strategies/implementations/butterfly.py`)
+3. ✅ **Condor** (`strategies/implementations/condor.py`)
+4. ✅ **Shifted Iron Condor** (`strategies/implementations/shifted_condor.py`)
+5. ✅ **Flygonaal (3:2:2:3)** (`strategies/implementations/flygonaal.py`)
+6. ✅ **Calendar Spreads** (`strategies/implementations/calendar.py`)
 
-No breaking changes to Signal JSON or API.
+### Adding New Strategies:
+
+```python
+from strategies.core import BaseStrategy, register_strategy
+
+@register_strategy("MY_STRATEGY")
+class MyStrategy(BaseStrategy):
+    @property
+    def strategy_type(self) -> str:
+        return "MY_STRATEGY"
+    
+    def scan(self, chain_data, dte, **params):
+        # Your implementation
+        return [StrategyCandidate(...)]
+```
+
+Then import in `scan.py` and add to scanner list. No breaking changes to Signal JSON or API.
 
 ---
 

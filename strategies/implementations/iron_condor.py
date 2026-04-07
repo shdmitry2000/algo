@@ -1,30 +1,39 @@
 """
 Iron Condor strategy scanner.
+
+Migrated from filters/phase2strat1/strategies/iron_condor.py to use unified core library.
+
 Generates IC buy/sell candidates with standard and imbalanced quantities.
-Doc reference: Pages 5, 7, 9, 15
+Supports: BUY, SELL, BUY_IMBAL, SELL_IMBAL
+
+Structure:
+    - Call spread + Put spread at SAME strikes
+    - Buy IC: total_spread < width (pay debit, max profit = width - spread - fees)
+    - Sell IC: total_spread > width (receive credit, max profit = spread - width - fees)
 """
 import logging
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
-from datagathering.models import StandardOptionTick
-from filters.phase2strat1.models import Leg
-from filters.phase2strat1.chain_index import ChainIndex
-from filters.phase2strat1.spread_math import apply_spread_cap
-from filters.phase2strat1.strategies.base import BaseStrategy, StrategyCandidate, STRATEGY_TYPES
+from strategies.core import (
+    BaseStrategy,
+    StrategyCandidate,
+    Leg,
+    ChainData,
+    apply_spread_cap,
+    compute_bed,
+    compute_annual_return,
+)
+from strategies.core.registry import register_strategy
 
 logger = logging.getLogger(__name__)
 
 
+@register_strategy("IC")
 class IronCondorStrategy(BaseStrategy):
     """
     Iron Condor scanner (Standard IC at same strikes).
     Supports: BUY, SELL, BUY_IMBAL, SELL_IMBAL
-    
-    Structure:
-        - Call spread + Put spread at SAME strikes
-        - Buy IC: total_spread < width (pay debit, max profit = width - spread - fees)
-        - Sell IC: total_spread > width (receive credit, max profit = spread - width - fees)
     """
     
     @property
@@ -33,24 +42,35 @@ class IronCondorStrategy(BaseStrategy):
     
     def scan(
         self,
-        chain_idx: ChainIndex,
+        chain_data: ChainData,
         dte: int,
         fee_per_leg: float,
         spread_cap_bound: float = 0.01,
         min_liquidity_bid: float = 0.0,
         min_liquidity_ask: float = 0.0,
-        include_imbalanced: bool = True,
+        include_imbalanced: bool = False,
         max_imbalanced_legs: int = 8,
         **kwargs
     ) -> List[StrategyCandidate]:
         """
         Enumerate Iron Condor candidates (BUY, SELL, and imbalanced variants).
         
+        Args:
+            chain_data: Unified chain data
+            dte: Days to expiration
+            fee_per_leg: Commission per contract
+            spread_cap_bound: Spread cap bound (default 0.01)
+            min_liquidity_bid: Minimum bid for liquidity check
+            min_liquidity_ask: Minimum ask for liquidity check
+            include_imbalanced: Include imbalanced quantity variants
+            max_imbalanced_legs: Maximum total legs for imbalanced
+            **kwargs: Additional strategy-specific parameters
+        
         Returns:
             List of StrategyCandidate objects (not yet filtered by BED)
         """
         candidates = []
-        strikes = chain_idx.sorted_strikes()
+        strikes = chain_data.sorted_strikes()
         
         # Enumerate all strike pairs
         for i, low_strike in enumerate(strikes):
@@ -62,10 +82,10 @@ class IronCondorStrategy(BaseStrategy):
                     continue
                 
                 # Get all 4 legs for IC
-                call_low = chain_idx.get_call(low_strike)
-                call_high = chain_idx.get_call(high_strike)
-                put_low = chain_idx.get_put(low_strike)
-                put_high = chain_idx.get_put(high_strike)
+                call_low = chain_data.get_call(low_strike)
+                call_high = chain_data.get_call(high_strike)
+                put_low = chain_data.get_put(low_strike)
+                put_high = chain_data.get_put(high_strike)
                 
                 if not all([call_low, call_high, put_low, put_high]):
                     continue
@@ -92,7 +112,7 @@ class IronCondorStrategy(BaseStrategy):
                 # Buy IC: cost < width (debit)
                 if total_mid_entry > 0 and total_mid_entry < width:
                     candidate = self._build_standard_ic(
-                        chain_idx, dte, "buy", "IC_BUY",
+                        chain_data, dte, "buy", "IC_BUY",
                         call_low, call_high, put_low, put_high,
                         width, call_spread_raw, call_spread_capped,
                         put_spread_raw, put_spread_capped,
@@ -104,7 +124,7 @@ class IronCondorStrategy(BaseStrategy):
                 # Sell IC: credit > width (credit)
                 if total_mid_entry > width:
                     candidate = self._build_standard_ic(
-                        chain_idx, dte, "sell", "IC_SELL",
+                        chain_data, dte, "sell", "IC_SELL",
                         call_low, call_high, put_low, put_high,
                         width, call_spread_raw, call_spread_capped,
                         put_spread_raw, put_spread_capped,
@@ -116,28 +136,28 @@ class IronCondorStrategy(BaseStrategy):
                 # Imbalanced IC variants
                 if include_imbalanced:
                     imbal_candidates = self._scan_imbalanced_ic(
-                        chain_idx, dte, fee_per_leg, spread_cap_bound,
+                        chain_data, dte, fee_per_leg, spread_cap_bound,
                         call_low, call_high, put_low, put_high,
                         width, max_imbalanced_legs
                     )
                     candidates.extend(imbal_candidates)
         
         logger.info(
-            f"[IronCondor] {chain_idx.symbol} {chain_idx.expiration}: "
+            f"[IronCondor] {chain_data.symbol} {chain_data.expirations[0]}: "
             f"{len(candidates)} candidates generated (BUY/SELL/IMBAL)"
         )
         return candidates
     
     def _build_standard_ic(
         self,
-        chain_idx: ChainIndex,
+        chain_data: ChainData,
         dte: int,
         open_side: str,
         strategy_type: str,
-        call_low: StandardOptionTick,
-        call_high: StandardOptionTick,
-        put_low: StandardOptionTick,
-        put_high: StandardOptionTick,
+        call_low,
+        call_high,
+        put_low,
+        put_high,
         width: float,
         call_spread_raw: float,
         call_spread_capped: float,
@@ -145,7 +165,7 @@ class IronCondorStrategy(BaseStrategy):
         put_spread_capped: float,
         total_mid_entry: float,
         fee_per_leg: float
-    ) -> StrategyCandidate:
+    ) -> Optional[StrategyCandidate]:
         """Build standard 1x1 IC candidate (BUY or SELL side)."""
         
         # For SELL IC, reverse leg actions
@@ -224,7 +244,7 @@ class IronCondorStrategy(BaseStrategy):
             return None
         
         remaining_percent = (remaining_profit / width) * 100
-        break_even_days = self.compute_bed(remaining_profit, width)
+        break_even_days = compute_bed(remaining_profit, width)
         
         # Structural pass
         if open_side == "buy":
@@ -237,13 +257,12 @@ class IronCondorStrategy(BaseStrategy):
         
         # Strikes used
         strikes_used = sorted(set([call_low.strike, call_high.strike, put_low.strike, put_high.strike]))
-        from filters.phase2strat1.spread_math import compute_annual_return
         annual_return = compute_annual_return(remaining_profit, width, dte)
         
         candidate = StrategyCandidate(
             strategy_type=strategy_type,
-            symbol=chain_idx.symbol,
-            expiration=chain_idx.expiration,
+            symbol=chain_data.symbol,
+            expiration=chain_data.expirations[0],
             dte=dte,
             open_side=open_side,
             is_imbalanced=False,
@@ -285,14 +304,14 @@ class IronCondorStrategy(BaseStrategy):
     
     def _scan_imbalanced_ic(
         self,
-        chain_idx: ChainIndex,
+        chain_data: ChainData,
         dte: int,
         fee_per_leg: float,
         spread_cap_bound: float,
-        call_low: StandardOptionTick,
-        call_high: StandardOptionTick,
-        put_low: StandardOptionTick,
-        put_high: StandardOptionTick,
+        call_low,
+        call_high,
+        put_low,
+        put_high,
         width: float,
         max_total_legs: int
     ) -> List[StrategyCandidate]:
@@ -304,14 +323,14 @@ class IronCondorStrategy(BaseStrategy):
         
         # Generate imbalanced quantity combos
         imbal_combos = self.generate_imbalanced_quantities(
-            max_total_legs=max_total_legs,  # This is already the sum limit
+            max_total_legs=max_total_legs,
             max_ratio=3
         )
         
         for buy_qty, sell_qty in imbal_combos:
             # Try BUY imbalanced IC
             buy_candidate = self._build_imbalanced_ic(
-                chain_idx, dte, "buy", "IC_BUY_IMBAL",
+                chain_data, dte, "buy", "IC_BUY_IMBAL",
                 call_low, call_high, put_low, put_high,
                 width, buy_qty, sell_qty, fee_per_leg, spread_cap_bound
             )
@@ -320,7 +339,7 @@ class IronCondorStrategy(BaseStrategy):
             
             # Try SELL imbalanced IC
             sell_candidate = self._build_imbalanced_ic(
-                chain_idx, dte, "sell", "IC_SELL_IMBAL",
+                chain_data, dte, "sell", "IC_SELL_IMBAL",
                 call_low, call_high, put_low, put_high,
                 width, buy_qty, sell_qty, fee_per_leg, spread_cap_bound
             )
@@ -331,20 +350,20 @@ class IronCondorStrategy(BaseStrategy):
     
     def _build_imbalanced_ic(
         self,
-        chain_idx: ChainIndex,
+        chain_data: ChainData,
         dte: int,
         open_side: str,
         strategy_type: str,
-        call_low: StandardOptionTick,
-        call_high: StandardOptionTick,
-        put_low: StandardOptionTick,
-        put_high: StandardOptionTick,
+        call_low,
+        call_high,
+        put_low,
+        put_high,
         width: float,
         buy_qty: int,
         sell_qty: int,
         fee_per_leg: float,
         spread_cap_bound: float
-    ) -> StrategyCandidate:
+    ) -> Optional[StrategyCandidate]:
         """
         Build imbalanced IC candidate.
         Doc page 9: buy_notional >= sell_notional, BED uses buy side width.
@@ -419,11 +438,7 @@ class IronCondorStrategy(BaseStrategy):
         put_spread_raw = put_low.mid - put_high.mid
         put_spread_capped = apply_spread_cap(put_spread_raw, width, spread_cap_bound)
         
-        # Total with quantities
-        total_mid_entry = (call_spread_capped * buy_qty) + (put_spread_capped * buy_qty) - \
-                         (call_spread_capped * (buy_qty - sell_qty)) - (put_spread_capped * (buy_qty - sell_qty))
-        
-        # Simpler: cost per unit * net quantity
+        # Total with quantities - cost per unit * net quantity
         net_call_qty = buy_qty - sell_qty
         net_put_qty = buy_qty - sell_qty
         total_mid_entry = call_spread_capped * net_call_qty + put_spread_capped * net_put_qty
@@ -449,19 +464,18 @@ class IronCondorStrategy(BaseStrategy):
         if remaining_profit <= 0:
             return None
         
-        break_even_days = self.compute_bed(remaining_profit, buy_notional)
+        break_even_days = compute_bed(remaining_profit, buy_notional)
         
         # Net credit
         net_credit = -total_mid_entry if open_side == "buy" else total_mid_entry
         
         strikes_used = sorted(set([call_low.strike, call_high.strike, put_low.strike, put_high.strike]))
-        from filters.phase2strat1.spread_math import compute_annual_return
         annual_return = compute_annual_return(remaining_profit, buy_notional, dte)
         
         candidate = StrategyCandidate(
             strategy_type=strategy_type,
-            symbol=chain_idx.symbol,
-            expiration=chain_idx.expiration,
+            symbol=chain_data.symbol,
+            expiration=chain_data.expirations[0],
             dte=dte,
             open_side=open_side,
             is_imbalanced=True,

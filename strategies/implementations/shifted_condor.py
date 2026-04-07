@@ -1,28 +1,38 @@
 """
-Shifted Iron Condor strategy scanner (BUY/SELL, Imbalanced).
-Doc reference: Page 8, 9
+Shifted Iron Condor strategy scanner.
+
+Migrated from filters/phase2strat1/strategies/shifted_condor.py to use unified core library.
+
+Supports BUY, SELL, and imbalanced quantities.
+
+Structure:
+    - First spread at one set of strikes
+    - Second spread at DIFFERENT strikes but same notional
+    - Example: Call spread 79/80 + Put spread 81/82 (offset strikes)
 """
 import logging
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
-from filters.phase2strat1.models import Leg
-from filters.phase2strat1.chain_index import ChainIndex
-from filters.phase2strat1.spread_math import apply_spread_cap
-from filters.phase2strat1.strategies.base import BaseStrategy, StrategyCandidate, STRATEGY_TYPES
+from strategies.core import (
+    BaseStrategy,
+    StrategyCandidate,
+    Leg,
+    ChainData,
+    apply_spread_cap,
+    compute_bed,
+    compute_annual_return,
+)
+from strategies.core.registry import register_strategy
 
 logger = logging.getLogger(__name__)
 
 
+@register_strategy("SHIFTED_IC")
 class ShiftedCondorStrategy(BaseStrategy):
     """
     Shifted Iron Condor scanner.
     Supports BUY, SELL, and imbalanced quantities.
-    
-    Structure:
-        - First spread at one set of strikes
-        - Second spread at DIFFERENT strikes but same notional
-        - Example: Call spread 79/80 + Put spread 81/80 (puts ABOVE calls)
     """
     
     @property
@@ -31,7 +41,7 @@ class ShiftedCondorStrategy(BaseStrategy):
     
     def scan(
         self,
-        chain_idx: ChainIndex,
+        chain_data: ChainData,
         dte: int,
         fee_per_leg: float,
         spread_cap_bound: float = 0.01,
@@ -47,7 +57,7 @@ class ShiftedCondorStrategy(BaseStrategy):
             List of StrategyCandidate objects
         """
         candidates = []
-        strikes = chain_idx.sorted_strikes()
+        strikes = chain_data.sorted_strikes()
         
         # Enumerate all pairs of spreads with matching notional
         for i in range(len(strikes) - 1):
@@ -73,7 +83,7 @@ class ShiftedCondorStrategy(BaseStrategy):
                         
                         # Build BUY side
                         buy_candidate = self._build_shifted_ic(
-                            chain_idx, dte, fee_per_leg, spread_cap_bound,
+                            chain_data, dte, fee_per_leg, spread_cap_bound,
                             "buy", "SHIFTED_IC_BUY",
                             call_low, call_high, put_low, put_high,
                             call_width, min_liquidity_bid, min_liquidity_ask
@@ -83,7 +93,7 @@ class ShiftedCondorStrategy(BaseStrategy):
                         
                         # Build SELL side
                         sell_candidate = self._build_shifted_ic(
-                            chain_idx, dte, fee_per_leg, spread_cap_bound,
+                            chain_data, dte, fee_per_leg, spread_cap_bound,
                             "sell", "SHIFTED_IC_SELL",
                             call_low, call_high, put_low, put_high,
                             call_width, min_liquidity_bid, min_liquidity_ask
@@ -92,14 +102,14 @@ class ShiftedCondorStrategy(BaseStrategy):
                             candidates.append(sell_candidate)
         
         logger.info(
-            f"[ShiftedCondor] {chain_idx.symbol} {chain_idx.expiration}: "
+            f"[ShiftedCondor] {chain_data.symbol} {chain_data.expirations[0]}: "
             f"{len(candidates)} shifted IC candidates (BUY/SELL)"
         )
         return candidates
     
     def _build_shifted_ic(
         self,
-        chain_idx: ChainIndex,
+        chain_data: ChainData,
         dte: int,
         fee_per_leg: float,
         spread_cap_bound: float,
@@ -112,14 +122,14 @@ class ShiftedCondorStrategy(BaseStrategy):
         width: float,
         min_liquidity_bid: float,
         min_liquidity_ask: float
-    ) -> StrategyCandidate:
+    ) -> Optional[StrategyCandidate]:
         """Build Shifted IC candidate (BUY or SELL side)."""
         
         # Get all ticks
-        call_low = chain_idx.get_call(call_low_strike)
-        call_high = chain_idx.get_call(call_high_strike)
-        put_low = chain_idx.get_put(put_low_strike)
-        put_high = chain_idx.get_put(put_high_strike)
+        call_low = chain_data.get_call(call_low_strike)
+        call_high = chain_data.get_call(call_high_strike)
+        put_low = chain_data.get_put(put_low_strike)
+        put_high = chain_data.get_put(put_high_strike)
         
         if not all([call_low, call_high, put_low, put_high]):
             return None
@@ -170,7 +180,7 @@ class ShiftedCondorStrategy(BaseStrategy):
         if remaining_profit <= 0:
             return None
         
-        break_even_days = self.compute_bed(remaining_profit, width)
+        break_even_days = compute_bed(remaining_profit, width)
         
         # Build legs
         legs = [
@@ -229,13 +239,12 @@ class ShiftedCondorStrategy(BaseStrategy):
             put_low.strike, put_high.strike
         ]))
         
-        from filters.phase2strat1.spread_math import compute_annual_return
         annual_return = compute_annual_return(remaining_profit, width, dte)
         
         candidate = StrategyCandidate(
             strategy_type=strategy_type,
-            symbol=chain_idx.symbol,
-            expiration=chain_idx.expiration,
+            symbol=chain_data.symbol,
+            expiration=chain_data.expirations[0],
             dte=dte,
             open_side=open_side,
             is_imbalanced=False,

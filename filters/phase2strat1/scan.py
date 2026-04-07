@@ -23,12 +23,18 @@ from storage.signal_cache import (
 )
 from filters.phase2strat1.precheck import precheck_symbols
 from filters.phase2strat1.chain_index import ChainIndex, compute_dte, group_by_expiration
-from filters.phase2strat1.strategies import (
+
+# UPDATED: Use unified strategies from strategies/implementations
+from strategies.implementations import (
     IronCondorStrategy,
     ButterflyStrategy,
-    ShiftedCondorStrategy,
-    StrategyCandidate
+    CondorStrategy,
+    ShiftedCondorStrategy
 )
+from strategies.core import StrategyCandidate
+from strategies.adapters import convert_chain_index_to_chain_data
+
+# Still use legacy models for Signal/HistoryEvent (for now)
 from filters.phase2strat1.models import HistoryEvent, Signal
 from datagathering.models import StandardOptionTick
 
@@ -265,8 +271,10 @@ def run_scan(run_id: Optional[str] = None) -> Dict[str, Any]:
     passed_bed = 0
     
     # Initialize strategy scanners
+    # Instantiate unified strategy scanners
     ic_scanner = IronCondorStrategy()
     bf_scanner = ButterflyStrategy()
+    condor_scanner = CondorStrategy()
     shifted_ic_scanner = ShiftedCondorStrategy()
     
     # Scan each symbol
@@ -334,18 +342,22 @@ def run_scan(run_id: Optional[str] = None) -> Dict[str, Any]:
             
             scanned_pairs += 1
             
-            # Build chain index
+            # Build chain index (legacy)
             chain_idx = ChainIndex(symbol, expiration, ticks)
+            
+            # UPDATED: Convert to unified ChainData for new strategies
+            chain_data = convert_chain_index_to_chain_data(chain_idx)
+            
             dte = compute_dte(expiration)
             
-            # Scan ALL strategies
+            # Scan ALL strategies (using unified implementations)
             logger.info(f"[scan] {symbol} {expiration}: Scanning all strategies...")
             
             all_strategy_candidates = {}
             
             # 1. Iron Condor (returns IC_BUY, IC_SELL, IC_BUY_IMBAL, IC_SELL_IMBAL)
             ic_candidates = ic_scanner.scan(
-                chain_idx, dte, fee_per_leg, spread_cap_bound
+                chain_data, dte, fee_per_leg, spread_cap_bound
             )
             # Group by strategy_type
             for candidate in ic_candidates:
@@ -353,27 +365,27 @@ def run_scan(run_id: Optional[str] = None) -> Dict[str, Any]:
                     all_strategy_candidates[candidate.strategy_type] = []
                 all_strategy_candidates[candidate.strategy_type].append(candidate)
             
-            # 2. Standard Butterfly (returns BF_BUY, BF_SELL)
+            # 2. Butterfly (returns BF_BUY, BF_SELL) - 3 strikes
             bf_candidates = bf_scanner.scan(
-                chain_idx, dte, fee_per_leg, spread_cap_bound
+                chain_data, dte, fee_per_leg, spread_cap_bound
             )
             for candidate in bf_candidates:
                 if candidate.strategy_type not in all_strategy_candidates:
                     all_strategy_candidates[candidate.strategy_type] = []
                 all_strategy_candidates[candidate.strategy_type].append(candidate)
             
-            # 3. Shifted Butterfly (returns SHIFTED_BF_BUY, SHIFTED_BF_SELL)
-            shifted_bf_candidates = bf_scanner.scan_shifted(
-                chain_idx, dte, fee_per_leg, spread_cap_bound
+            # 3. Condor (returns CONDOR_BUY, CONDOR_SELL) - 4 distinct strikes
+            condor_candidates = condor_scanner.scan(
+                chain_data, dte, fee_per_leg, spread_cap_bound
             )
-            for candidate in shifted_bf_candidates:
+            for candidate in condor_candidates:
                 if candidate.strategy_type not in all_strategy_candidates:
                     all_strategy_candidates[candidate.strategy_type] = []
                 all_strategy_candidates[candidate.strategy_type].append(candidate)
             
             # 4. Shifted Iron Condor (returns SHIFTED_IC_BUY, SHIFTED_IC_SELL)
             shifted_ic_candidates = shifted_ic_scanner.scan(
-                chain_idx, dte, fee_per_leg, spread_cap_bound
+                chain_data, dte, fee_per_leg, spread_cap_bound
             )
             for candidate in shifted_ic_candidates:
                 if candidate.strategy_type not in all_strategy_candidates:
@@ -404,17 +416,17 @@ def run_scan(run_id: Optional[str] = None) -> Dict[str, Any]:
                 continue
             
             # Find overall best strategy
-            # Priority (per doc + plan):
-            # 1. BF/SHIFTED_BF (BUY/SELL)
-            # 2. IC/SHIFTED_IC (BUY/SELL)
+            # Priority (UPDATED - using correct Condor naming):
+            # 1. BF/CONDOR (BUY/SELL) - single-side strategies
+            # 2. IC/SHIFTED_IC (BUY/SELL) - dual-side strategies
             # 3. Imbalanced variants (lower priority)
             priority_order = [
                 "BF_BUY", "BF_SELL",
-                "SHIFTED_BF_BUY", "SHIFTED_BF_SELL",
+                "CONDOR_BUY", "CONDOR_SELL",
                 "IC_BUY", "IC_SELL",
                 "SHIFTED_IC_BUY", "SHIFTED_IC_SELL",
                 "BF_BUY_IMBAL", "BF_SELL_IMBAL",
-                "SHIFTED_BF_BUY_IMBAL", "SHIFTED_BF_SELL_IMBAL",
+                "CONDOR_BUY_IMBAL", "CONDOR_SELL_IMBAL",
                 "IC_BUY_IMBAL", "IC_SELL_IMBAL",
                 "SHIFTED_IC_BUY_IMBAL", "SHIFTED_IC_SELL_IMBAL"
             ]

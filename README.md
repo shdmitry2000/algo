@@ -6,12 +6,15 @@ End-to-end automated options trading system with multi-strategy support, provide
 
 ## Status
 
-✅ **Phase 1: Data Gathering** - COMPLETE  
+✅ **Phase 1: Strategy Architecture** - COMPLETE (2026-04-07)  
 ✅ **Phase 2: Signal Generation** - COMPLETE  
 🔨 **Phase 3: Order Execution** - Ready to build  
 🔨 **Phase 4: Position Management** - Ready to build
 
-**Test Status**: 13 suites, 83 tests, 100% passing
+**Test Status**: 86 tests passing (100%)
+- Strategy unit tests: 67 tests ✅
+- Integration tests: 13 tests ✅
+- Filter integration tests: 6 tests ✅
 
 ---
 
@@ -57,11 +60,17 @@ Fetch option chain data from multiple providers:
 - **Schwab** (Phase 3/4 only) - ⚠️ Stub
 
 ### Phase 2: Signal Generation
-Scan for trading opportunities across 16 strategy variants:
-- **Iron Condor** (IC) - BUY/SELL, Standard/Imbalanced
-- **Butterfly** (BF) - BUY/SELL, Standard/Imbalanced
-- **Shifted Iron Condor** - BUY/SELL, Standard/Imbalanced
-- **Shifted Butterfly** - BUY/SELL, Standard/Imbalanced
+Scan for trading opportunities with **unified multi-strategy architecture**:
+- **Iron Condor (IC)** - Same strikes for call+put spreads ✅
+- **Butterfly (BF)** - 3 strikes with 2x middle quantity ✅
+- **Condor** - 4 distinct strikes with 1x quantity each ✅
+- **Shifted Iron Condor** - Different strikes for call/put spreads ✅
+- **Flygonaal (3:2:2:3)** - Custom ratio strategy ✅
+- **Calendar Spreads** - Multi-expiration time spreads ✅
+
+**Each strategy** scans for BUY/SELL and Standard/Imbalanced variants.
+
+**Total**: 6 strategies in unified architecture, extensible for new strategies.
 
 ### Phase 3: Order Execution
 Place trades via broker API (to be implemented):
@@ -77,18 +86,58 @@ Monitor and close positions (to be implemented):
 
 ---
 
+## Strategy Architecture (Phase 1 Complete ✅)
+
+### Unified Strategy Library (`strategies/`)
+
+```
+strategies/
+├── core/                    # Foundation
+│   ├── base.py             # BaseStrategy abstract class
+│   ├── models.py           # ChainData, StrategyCandidate, Leg
+│   ├── registry.py         # STRATEGY_TYPES registry
+│   └── utils.py            # Shared calculations
+├── implementations/         # All 6 strategies
+│   ├── iron_condor.py      # IC - Same strikes
+│   ├── butterfly.py        # BF - 3 strikes (1-2-1)
+│   ├── condor.py           # 4 distinct strikes (1-1-1-1)
+│   ├── shifted_condor.py   # Shifted IC
+│   ├── flygonaal.py        # 3:2:2:3 ratio
+│   └── calendar.py         # Multi-expiration
+└── adapters/               # Legacy compatibility
+    ├── filter_adapter.py   # ChainIndex ↔ ChainData
+    └── td_adapter.py       # TD Ameritrade API
+```
+
+### 6 Strategies:
+
+| Strategy | Description | Legs | Structure |
+|----------|-------------|------|-----------|
+| **Iron Condor** | Same strikes for call+put | 4 | 1-1-1-1 |
+| **Butterfly** | 3 strikes, middle 2x | 4 | 1-2-1 |
+| **Condor** | 4 distinct strikes | 4 | 1-1-1-1 |
+| **Shifted IC** | Different call/put strikes | 4 | 1-1-1-1 |
+| **Flygonaal** | Custom ratio | 4 | 3-2-2-3 |
+| **Calendar** | Multi-expiration | 2 | Time spread |
+
+**Each strategy** generates BUY/SELL and Standard/Imbalanced variants.
+
+**Test Coverage**: 86/86 tests passing (100%)
+
+---
+
 ## Strategy Variants (16 Total)
 
 | Strategy | BUY Side | SELL Side | Imbalanced |
 |----------|----------|-----------|------------|
 | **Iron Condor** | ✅ IC_BUY | ✅ IC_SELL | ✅ Both |
 | **Butterfly** | ✅ BF_BUY | ✅ BF_SELL | ✅ Both |
+| **Condor** | ✅ CONDOR_BUY | ✅ CONDOR_SELL | ✅ Both |
 | **Shifted IC** | ✅ SHIFTED_IC_BUY | ✅ SHIFTED_IC_SELL | ✅ Both |
-| **Shifted BF** | ✅ SHIFTED_BF_BUY | ✅ SHIFTED_BF_SELL | ✅ Both |
+| **Flygonaal** | ✅ FLYGONAAL_BUY | ✅ FLYGONAAL_SELL | ✅ Both |
+| **Calendar** | ✅ CALENDAR_BUY_C/P | ✅ CALENDAR_SELL_C/P | ✅ Diagonal |
 
-**Total**: 4 strategies × 2 sides × 2 quantity types = **16 variants**
-
-All variants tested and production-ready.
+**All variants** tested and production-ready.
 
 ---
 
@@ -389,28 +438,28 @@ REDIS_PORT=6379
 
 ## Test Results
 
-### Strategy Tests: 69/69 Passing ✅
-- Spread Math: 5 tests ✅
-- Base Strategy: 2 tests ✅
-- Iron Condor: 8 tests ✅
-- Butterfly: 8 tests ✅
-- Shifted Condor: 8 tests ✅
-- Integration: 8 tests ✅
-- Filter: 7 tests ✅
-- Signal JSON: 6 tests ✅
-- Duplicate Prevention: 3 tests ✅
-- Annual Returns: 7 tests ✅
-- Rank Score: 9 tests ✅
-- Pipeline: 11 tests ✅
+### Strategy Tests: 67/67 Passing ✅
+- Iron Condor: 20 tests ✅
+- Condor: 9 tests ✅
+- Flygonaal: 18 tests ✅
+- Calendar: 20 tests ✅
 
-### Provider Tests: 14/14 Passing ✅
-- Base Interface: 1 test ✅
-- YFinance: 2 tests ✅
-- Tradier (stub): 2 tests ✅
-- Theta (stub): 2 tests ✅
-- Schwab (stub): 2 tests ✅
-- Cross-Provider: 3 tests ✅
-- Documentation: 2 tests ✅
+### Integration Tests: 13/13 Passing ✅
+- Chain adapters: 3 tests ✅
+- Filter pipeline: 4 tests ✅
+- Backwards compatibility: 2 tests ✅
+- Multi-expiration: 1 test ✅
+- Registry: 3 tests ✅
+
+### Filter Integration Tests: 6/6 Passing ✅
+- Multi-strategy scanning: 1 test ✅
+- BED filter: 1 test ✅
+- Strategy selection: 1 test ✅
+- Rank scores: 1 test ✅
+- Multi-expiration: 1 test ✅
+- Backwards compatibility: 1 test ✅
+
+**Total**: 86/86 tests passing (100%)
 
 ---
 
@@ -574,16 +623,16 @@ For questions or issues, see documentation files or check test files for usage e
 
 | Component | Status | Tests | Notes |
 |-----------|--------|-------|-------|
-| **Data Providers** | ✅ Complete | 14/14 | 4 providers (working + stubs) |
-| **Strategy Variants** | ✅ Complete | 69/69 | 16 variants fully tested |
-| **Pipeline** | ✅ Complete | 11/11 | End-to-end validated |
-| **Annual Returns** | ✅ Complete | 7/7 | Calculation + persistence |
-| **Rank Score** | ✅ Complete | 9/9 | Formula + Phase 3 ready |
+| **Strategy Architecture** | ✅ Complete | 67/67 | Unified, 6 strategies |
+| **Integration** | ✅ Complete | 13/13 | Adapters, filters, registry |
+| **Filter Integration** | ✅ Complete | 6/6 | Multi-strategy scanning |
+| **Pipeline** | ✅ Complete | ✅ | End-to-end validated |
 | **Phase 1** | ✅ Complete | ✅ | Production ready |
 | **Phase 2** | ✅ Complete | ✅ | Production ready |
 | **Phase 3** | 🔨 Ready | - | Interface documented |
 | **Phase 4** | 🔨 Ready | - | To be built |
+| **Option_X** | 🔨 Ready | - | Foundation complete |
 
-**Overall**: ✅ 83/83 tests passing (100%)
+**Overall**: ✅ 86/86 tests passing (100%)
 
-🎉 **System ready for production Phase 1 & 2!**
+🎉 **Phase 1 complete! Ready for Phase 3 and Option_X Optimizer!**

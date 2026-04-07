@@ -1,10 +1,31 @@
 """
-Strategy scanners for Phase 2 signal generation.
+Strategies package — DEPRECATED
+
+All strategy implementations have been moved to strategies/implementations/
+
+Use this instead:
+    from strategies.implementations import (
+        IronCondorStrategy,
+        ButterflyStrategy,
+        CondorStrategy,
+        ShiftedCondorStrategy,
+        FlygonaalStrategy,
+        CalendarSpreadStrategy
+    )
+    
+    from strategies.core import StrategyCandidate, BaseStrategy
+
+This package is kept only for import compatibility.
+The old implementation files have been deleted (2026-04-07).
 """
-from filters.phase2strat1.strategies.base import BaseStrategy, StrategyCandidate
-from filters.phase2strat1.strategies.iron_condor import IronCondorStrategy
-from filters.phase2strat1.strategies.butterfly import ButterflyStrategy
-from filters.phase2strat1.strategies.shifted_condor import ShiftedCondorStrategy
+
+# Re-export from new location for backwards compatibility
+from strategies.implementations import (
+    IronCondorStrategy,
+    ButterflyStrategy,
+    ShiftedCondorStrategy
+)
+from strategies.core import BaseStrategy, StrategyCandidate
 
 __all__ = [
     "BaseStrategy",
