@@ -375,5 +375,91 @@ def get_signal_run(run_id):
     return jsonify(meta)
 
 
+# ===== PHASE 3 OPEN TRADE ENDPOINTS =====
+
+@app.route("/api/open-trade", methods=["POST"])
+def trigger_open_trade():
+    """
+    Trigger Phase 3 open trade from the UI.
+    Runs asynchronously in a background process.
+
+    POST body:
+    {
+        "symbol": "AAPL",
+        "expiration": "2026-04-30",
+        "subset": "all",        // "all" | "ic" | "bf"
+        "executor": "mock",     // "mock" | "schwab"
+        "provider": "yfinance"  // optional
+    }
+    """
+    import subprocess
+
+    data = request.get_json() or {}
+    symbol = data.get("symbol")
+    expiration = data.get("expiration")
+
+    if not symbol or not expiration:
+        return jsonify({"error": "symbol and expiration are required"}), 400
+
+    subset = data.get("subset", "all")
+    executor = data.get("executor", "mock")
+    provider = data.get("provider", "yfinance")
+
+    root = _project_root()
+    py = _python_for_subprocess()
+
+    cmd = [
+        py, "-m", "open_trade.cli",
+        "--symbol", symbol.upper(),
+        "--expiration", expiration,
+        "--subset", subset,
+        "--executor", executor,
+        "--provider", provider,
+    ]
+
+    try:
+        subprocess.Popen(cmd, cwd=root)
+    except OSError as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    return jsonify({
+        "status": "started",
+        "symbol": symbol.upper(),
+        "expiration": expiration,
+        "subset": subset,
+        "executor": executor,
+        "provider": provider,
+    })
+
+
+@app.route("/api/trade-sessions/active")
+def list_trade_sessions():
+    """List all active trade sessions."""
+    from storage.signal_cache import list_active_trade_sessions
+    sessions = list_active_trade_sessions()
+    return jsonify({"count": len(sessions), "sessions": sessions})
+
+
+@app.route("/api/trade-sessions/<session_id>")
+def get_trade_session_detail(session_id):
+    """Get a specific trade session by ID."""
+    from storage.signal_cache import get_trade_session
+    session = get_trade_session(session_id)
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    return jsonify(session)
+
+
+@app.route("/api/trade-sessions/history")
+def get_trade_session_history():
+    """Get trade session history."""
+    from storage.signal_cache import get_trade_history
+    limit = int(request.args.get("limit", 50))
+    offset = int(request.args.get("offset", 0))
+    history = get_trade_history(limit=limit, offset=offset)
+    return jsonify({"count": len(history), "history": history})
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=True)
+

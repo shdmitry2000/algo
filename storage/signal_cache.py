@@ -291,3 +291,102 @@ def set_scan_metadata(symbol: str, expiration: str, chain_timestamp: str) -> Non
     }
     client.set(key, json.dumps(meta))
     logger.debug(f"[signal_cache] Updated scan metadata: {key}")
+
+
+# ===== PHASE 3 TRADE SESSION PERSISTENCE =====
+
+def save_trade_session(session_dict: Dict[str, Any]) -> None:
+    """
+    Save/update a trade session to Redis.
+    Called after every state change for real-time monitoring.
+
+    Keys:
+      TRADE:SESSION:{session_id} — full session JSON
+      TRADE:ACTIVE:{symbol}:{expiration} — session_id pointer
+    """
+    client = get_redis_client()
+    session_id = session_dict["session_id"]
+    symbol = session_dict["symbol"]
+    expiration = session_dict["expiration"]
+
+    # Save full session
+    key = f"TRADE:SESSION:{session_id}"
+    client.set(key, json.dumps(session_dict))
+
+    # Update active trade pointer
+    active_key = f"TRADE:ACTIVE:{symbol}:{expiration}"
+    state = session_dict.get("state", "")
+    if state in ("completed", "failed", "timeout", "reverted"):
+        # Terminal state — remove from active
+        client.delete(active_key)
+
+        # Add to history
+        client.rpush("TRADE:HISTORY", json.dumps({
+            "session_id": session_id,
+            "symbol": symbol,
+            "expiration": expiration,
+            "state": state,
+            "completed_at": session_dict.get("completed_at"),
+            "strategy_type": session_dict.get("current_strategy_type"),
+        }))
+    else:
+        client.set(active_key, session_id)
+
+    logger.debug(f"[signal_cache] Saved trade session: {session_id[:8]}... ({state})")
+
+
+def get_trade_session(session_id: str) -> Optional[Dict[str, Any]]:
+    """Get a trade session by ID."""
+    client = get_redis_client()
+    data = client.get(f"TRADE:SESSION:{session_id}")
+    if data:
+        return json.loads(data)
+    return None
+
+
+def get_active_trade_session(symbol: str, expiration: str) -> Optional[Dict[str, Any]]:
+    """Get the active trade session for a symbol+expiration."""
+    client = get_redis_client()
+    session_id = client.get(f"TRADE:ACTIVE:{symbol}:{expiration}")
+    if session_id:
+        sid = session_id.decode() if isinstance(session_id, bytes) else session_id
+        return get_trade_session(sid)
+    return None
+
+
+def list_active_trade_sessions() -> List[Dict[str, Any]]:
+    """List all currently active trade sessions."""
+    client = get_redis_client()
+    sessions = []
+    for key in client.scan_iter("TRADE:ACTIVE:*"):
+        session_id = client.get(key)
+        if session_id:
+            sid = session_id.decode() if isinstance(session_id, bytes) else session_id
+            session = get_trade_session(sid)
+            if session:
+                sessions.append(session)
+    return sessions
+
+
+def get_trade_history(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+    """Get trade session history (most recent first)."""
+    client = get_redis_client()
+    total = client.llen("TRADE:HISTORY")
+    start = max(0, total - offset - limit)
+    end = total - offset - 1
+    items = client.lrange("TRADE:HISTORY", start, end)
+    result = [json.loads(item) for item in reversed(items)]
+    return result
+
+
+def complete_trade_session(session_id: str, state: str, detail: Optional[Dict] = None) -> None:
+    """Mark a trade session as complete (success, failure, or timeout)."""
+    session = get_trade_session(session_id)
+    if session is None:
+        logger.warning(f"[signal_cache] Trade session {session_id} not found")
+        return
+    session["state"] = state
+    session["completed_at"] = datetime.utcnow().isoformat()
+    if detail:
+        session["result_detail"] = detail
+    save_trade_session(session)
